@@ -12,6 +12,7 @@ import { learnerState, nextActivity, sessionFor, quickSession, planDaySession, l
 import { pack } from "../catalog";
 import { firstActivityNudge } from "../onboarding";
 import { Card, Button, Tag, Meter } from "../ui";
+import { play, vibrate } from "../sound";
 
 const DAY_MS = 86_400_000;
 
@@ -30,7 +31,7 @@ function minutesToday(sessions: { completedAt: number | null; createdAt: number;
 }
 
 export default function HomePage() {
-  const learnerId = useApp((s) => s.activeLearnerId!);
+  const learnerId = useApp((s) => s.activeLearnerId);
   const attempts = useApp((s) => s.attempts);
   const reviews = useApp((s) => s.reviews);
   const sessions = useApp((s) => s.sessions);
@@ -54,7 +55,7 @@ export default function HomePage() {
   );
 
   const activity = useMemo(() => {
-    if (!learner) return null;
+    if (!learner || !learnerId) return null;
     return nextActivity(
       learnerState(learnerId, attempts, reviews, learner.diagnosticCompleted, {
         examDate: learner.examDate,
@@ -88,35 +89,47 @@ export default function HomePage() {
   const cursor = plan ? planCursor(plan, Date.now()) : null;
 
   const startActivity = () => {
-    if (!activity) return;
+    if (!activity || !learnerId) return;
+    play("start");
+    vibrate(20);
     const r = sessionFor(activity, attempts, learnerId);
     if (r) void startSession(r.session);
   };
 
   const startPlanDay = () => {
-    if (!cursor || !plan) return;
+    if (!cursor || !plan || !learnerId) return;
+    play("start");
+    vibrate(20);
     const r = planDaySession(cursor.day, attempts, reviews, learnerId);
     if (r) void startSession(r.session);
   };
 
   const timePick = (minutes?: number) => {
+    if (!learnerId) return;
     if (minutes) {
       const r = quickSession(attempts, learnerId, minutes);
       void startSession(r.session);
+      play("start");
+      vibrate(20);
       return;
     }
     if (activity) {
       const r = sessionFor(activity, attempts, learnerId);
       if (r) {
         void startSession(r.session);
+        play("start");
+        vibrate(20);
         return;
       }
     }
     const r = quickSession(attempts, learnerId, 5);
     void startSession(r.session);
+    play("start");
+    vibrate(20);
   };
 
   const saveExamDate = () => {
+    if (!learnerId) return;
     const ts = dateInput ? new Date(`${dateInput}T00:00:00`).getTime() : NaN;
     if (Number.isNaN(ts) || ts <= 0) return;
     void updateLearner(learnerId, { examDate: ts });

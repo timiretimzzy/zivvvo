@@ -32,7 +32,7 @@ export default function CoachPage() {
           </div>
           <div className="space-y-1 text-xs text-ink-dim">
             {signal.reasons.map((r, i) => (
-              <p key={i}>{r}</p>
+              <p key={`${signal.kind}-${i}`}>{r}</p>
             ))}
           </div>
         </Card>

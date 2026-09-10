@@ -155,7 +155,7 @@ export const useApp = create<AppStore>((set, get) => ({
   recordAnswer: async (q: Question, selected: number[], confidence: Confidence, durationMs: number) => {
     const s = get().activeSession;
     const learnerId = get().activeLearnerId;
-    if (!s || !learnerId) throw new Error("no active session or learner");
+    if (!s || !learnerId) return Promise.reject(new Error("no active session or learner"));
     const isCorrect = gradeQuestion(q, selected);
     const a: AttemptEvent = {
       id: `att_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`,
@@ -188,6 +188,7 @@ export const useApp = create<AppStore>((set, get) => ({
     const s = get().activeSession;
     const learnerId = get().activeLearnerId;
     if (!s) return;
+    if (!learnerId) return;
     const completed = { ...s, completedAt: Date.now() };
     await persistSession(completed);
     set({ activeSession: null });
@@ -199,7 +200,7 @@ export const useApp = create<AppStore>((set, get) => ({
     get().advanceEngagement({ type: "session", perfect, questionCount: sessionAttempts.length, day });
 
     const todayStart = now - (now % DAY_MS);
-    const allSessions = await db.sessions.where("learnerId").equals(learnerId!).toArray();
+    const allSessions = await db.sessions.where("learnerId").equals(learnerId).toArray();
     const todayMin = allSessions
       .filter((r) => r.completedAt && r.createdAt >= todayStart)
       .reduce((sum, r) => sum + (r.estimatedMinutes ?? 0), 0);

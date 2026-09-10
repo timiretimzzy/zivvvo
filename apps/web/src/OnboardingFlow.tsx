@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useApp } from "./store";
 import { Button } from "./ui";
+import { play, vibrate } from "./sound";
 import {
   CONFIDENCE_BANDS,
   EXAM_GOALS,
@@ -57,7 +58,7 @@ export function OnboardingFlow() {
   return (
     <div className="app-shell p-6 justify-center">
       <h1 className="text-2xl font-bold mb-1">Zivvvo</h1>
-      <p className="text-ink-dim mb-6">Adaptive Road Rules practice for the Zvid provisional test.</p>
+      <p className="text-ink-dim mb-6">Adaptive road-rules practice for the ZVID provisional licence test.</p>
 
       <StepDots step={step} />
 
@@ -81,7 +82,16 @@ export function OnboardingFlow() {
             placeholder="Your name"
             className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none focus:border-primary"
           />
-          <Button onClick={() => setStep(1)}>Continue</Button>
+          <Button
+            onClick={() => {
+              play("start");
+              vibrate(20);
+              setStep(1);
+            }}
+            disabled={!sel.name.trim()}
+          >
+            Continue
+          </Button>
         </div>
       )}
 
@@ -136,7 +146,13 @@ export function OnboardingFlow() {
             <Button variant="ghost" onClick={() => setStep(0)} className="w-24">
               Back
             </Button>
-            <Button disabled={!sel.goal || !sel.examDate} onClick={() => setStep(2)}>
+            <Button
+              disabled={!sel.goal || !sel.examDate}
+              onClick={() => {
+                play("select");
+                setStep(2);
+              }}
+            >
               Continue
             </Button>
           </div>
@@ -167,7 +183,13 @@ export function OnboardingFlow() {
             <Button variant="ghost" onClick={() => setStep(1)} className="w-24">
               Back
             </Button>
-            <Button disabled={!sel.timeline} onClick={() => setStep(3)}>
+            <Button
+              disabled={!sel.timeline}
+              onClick={() => {
+                play("select");
+                setStep(3);
+              }}
+            >
               Continue
             </Button>
           </div>
@@ -200,14 +222,21 @@ export function OnboardingFlow() {
             <Button variant="ghost" onClick={() => setStep(2)} className="w-24">
               Back
             </Button>
-            <Button disabled={!sel.confidence} onClick={() => void finish()}>
+            <Button
+              disabled={!sel.confidence}
+              onClick={() => {
+                play("start");
+                vibrate(30);
+                void finish();
+              }}
+            >
               Start learning
             </Button>
           </div>
         </div>
       )}
 
-      {(learners.length > 0 || import.meta.env.DEV) && (
+      {import.meta.env.DEV && (
         <details className="mt-8 text-xs text-ink-dim">
           <summary className="cursor-pointer">Developer: demo learners</summary>
           <div className="mt-2 space-y-2">

@@ -82,7 +82,7 @@ export default function ProgressPage() {
               <div key={c.id} className="flex items-center justify-between text-xs">
                 <span className="text-ink-dim">{c.label}</span>
                 <span className="w-24">{Math.round(c.value * 100)}%</span>
-                <span className="w-16 text-right font-semibold">{Math.round((c.contribution / readiness.score) * 100)}% of score</span>
+                <span className="w-16 text-right font-semibold">{readiness.score > 0 ? Math.round((c.contribution / readiness.score) * 100) : 0}% of score</span>
               </div>
             ))}
           </div>

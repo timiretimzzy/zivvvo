@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { defaultConfig } from "@zivvvo/learning-engine";
 import {
   buildSessionSummary,
+  gradeQuestion,
   mockScore,
   ZVID_MOCK_DEFAULT,
+  type AttemptEvent,
   type Confidence,
   type LearningSession,
 } from "@zivvvo/assessment-engine";
@@ -11,7 +13,8 @@ import type { Question } from "@zivvvo/content";
 import { useApp } from "../store";
 import { mockSession, quickSession } from "../engine";
 import { pack } from "../catalog";
-import { Card, Button, Meter, Tag } from "../ui";
+import { Card, Button, Meter, Tag, QuestionMedia } from "../ui";
+import { play, vibrate } from "../sound";
 
 function SessionRunner({ session }: { session: LearningSession }) {
   const recordAnswer = useApp((s) => s.recordAnswer);
@@ -22,6 +25,7 @@ function SessionRunner({ session }: { session: LearningSession }) {
   const [selected, setSelected] = useState<number[]>([]);
   const [revealed, setRevealed] = useState(false);
   const [done, setDone] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(session.estimatedMinutes * 60);
   const startedAt = useRef(Date.now());
 
@@ -42,11 +46,22 @@ function SessionRunner({ session }: { session: LearningSession }) {
   const total = session.questions.length;
 
   const finish = () => {
+    const sessionAttempts = allAttempts.filter((a) => a.sessionId === session.id);
+    const acc = sessionAttempts.length ? sessionAttempts.filter((a) => a.isCorrect).length / sessionAttempts.length : 0;
+    const passed = isMock ? mockScore(sessionAttempts, ZVID_MOCK_DEFAULT).passed : acc >= 0.75;
+    if (passed) {
+      play("pass");
+      vibrate([40, 60, 40]);
+    } else {
+      play("fail");
+      vibrate([60]);
+    }
     setDone(true);
     void completeSession();
   };
 
   const onConfidence = (confidence: Confidence) => {
+    play("select");
     if (!question) return;
     const durationMs = Math.max(250, Date.now() - startedAt.current);
     void recordAnswer(question, selected, confidence, durationMs).then(() => {
@@ -78,6 +93,16 @@ function SessionRunner({ session }: { session: LearningSession }) {
 if (done) {
     const s = summary;
     const m = isMock && s ? mockScore(allAttempts.filter((a) => a.sessionId === session.id), ZVID_MOCK_DEFAULT) : null;
+    const sessionAttempts = allAttempts.filter((a) => a.sessionId === session.id);
+    if (reviewOpen) {
+      return (
+        <ReviewList
+          session={session}
+          attempts={sessionAttempts}
+          onBack={() => setReviewOpen(false)}
+        />
+      );
+    }
     return (
       <div className="space-y-4">
         <Card title={isMock ? "Mock result" : "Session complete"}>
@@ -114,6 +139,11 @@ if (done) {
             </ul>
           </Card>
         ) : null}
+        {sessionAttempts.length > 0 ? (
+          <Button variant="ghost" onClick={() => setReviewOpen(true)}>
+            Review answers
+          </Button>
+        ) : null}
         <Button onClick={() => useApp.getState().setTab("home")}>Back home</Button>
       </div>
     );
@@ -137,16 +167,7 @@ if (done) {
         Question {index + 1} of {total} · {session.title}
       </div>
       <Card>
-        {question.imageRef && (
-          <div className="mb-3 flex justify-center overflow-hidden rounded-xl bg-surface-2">
-            <img
-              src={`/images/${question.imageRef}`}
-              alt=""
-              loading="lazy"
-              className="max-h-52 w-auto object-contain"
-            />
-          </div>
-        )}
+        <QuestionMedia imageRef={question.imageRef} />
         <p className="text-lg font-semibold leading-snug">{question.stem}</p>
       </Card>
       <div className="space-y-2">
@@ -189,10 +210,78 @@ if (done) {
           </div>
         </>
       ) : (
-        <Button onClick={() => selected.length && setRevealed(true)} disabled={selected.length === 0}>
+        <Button
+          onClick={() => {
+            if (!selected.length) return;
+            if (gradeQuestion(question, selected)) {
+              play("correct");
+              vibrate(15);
+            } else {
+              play("wrong");
+              vibrate([30, 40, 30]);
+            }
+            setRevealed(true);
+          }}
+          disabled={selected.length === 0}
+        >
           Check answer
         </Button>
       )}
+    </div>
+  );
+}
+
+function ReviewList({
+  session,
+  attempts,
+  onBack,
+}: {
+  session: LearningSession;
+  attempts: AttemptEvent[];
+  onBack: () => void;
+}) {
+  const items = session.questions
+    .map((q) => ({ q, a: attempts.find((x) => x.qid === q.qid) }))
+    .filter((x): x is { q: Question; a: AttemptEvent } => Boolean(x.a));
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-bold">Review</h2>
+        <button onClick={onBack} className="text-sm font-semibold text-primary">
+          Back to result
+        </button>
+      </div>
+      <p className="text-sm text-ink-dim">
+        {attempts.filter((a) => a.isCorrect).length} of {attempts.length} answered correctly.
+      </p>
+      {items.map(({ q, a }, i) => (
+        <Card key={q.qid}>
+          <div className="mb-2 flex items-center justify-between text-xs text-ink-dim">
+            <span>Question {i + 1}</span>
+            {a.isCorrect ? <Tag tone="ok">Correct</Tag> : <Tag tone="bad">Missed</Tag>}
+          </div>
+          <QuestionMedia imageRef={q.imageRef} />
+          <p className="mb-2 text-sm font-semibold leading-snug">{q.stem}</p>
+          <div className="mb-3 space-y-1 text-xs">
+            <p className="text-ink-dim">
+              Your answer:{" "}
+              <span className={a.isCorrect ? "text-ok" : "text-bad"}>
+                {a.selected.map((i) => q.options[i]?.text).filter(Boolean).join(", ") || "no answer"}
+              </span>
+            </p>
+            {!a.isCorrect && (
+              <p className="text-ok">
+                Correct: {q.correctIndexes.map((i) => q.options[i]?.text).filter(Boolean).join(", ")}
+              </p>
+            )}
+          </div>
+          {q.explanation && (
+            <div className="rounded-xl bg-surface-2/60 p-3 text-xs text-ink-dim">{q.explanation}</div>
+          )}
+        </Card>
+      ))}
+      <Button onClick={onBack}>Back to result</Button>
     </div>
   );
 }
@@ -228,8 +317,8 @@ export default function PracticePage() {
       </Card>
       <Card title="Mock exam">
         <p className="mb-3 text-sm text-ink-dim">
-          {ZVID_MOCK_DEFAULT.questionCount} questions · {ZVID_MOCK_DEFAULT.durationMin} minutes · pass at{" "}
-          {Math.round(ZVID_MOCK_DEFAULT.passMark * 100)}%. Blueprint findings are experimental until verified.
+          {ZVID_MOCK_DEFAULT.questionCount} questions · {ZVID_MOCK_DEFAULT.durationMin} minutes · pass mark at{" "}
+          {Math.round(ZVID_MOCK_DEFAULT.passMark * 100)}%. The closest run-through of the real test you can do on the phone.
         </p>
         <Button variant="ghost" onClick={launchMock}>
           Start mock exam

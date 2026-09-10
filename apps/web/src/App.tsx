@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useApp, type Tab } from "./store";
 import { syncManager } from "./sync-supabase";
 import { OnboardingFlow } from "./OnboardingFlow";
+import { isSoundMuted, play, setSoundMuted } from "./sound";
 import HomePage from "./pages/Home";
 import LearnPage from "./pages/Learn";
 import PracticePage from "./pages/Practice";
@@ -22,6 +23,15 @@ export default function App() {
   const activeSession = useApp((s) => s.activeSession);
   const tab = useApp((s) => s.tab);
   const setTab = useApp((s) => s.setTab);
+  const learnerName = useApp((s) => s.learners.find((l) => l.id === s.activeLearnerId)?.name);
+  const [muted, setMuted] = useState(isSoundMuted());
+
+  const toggleMute = () => {
+    const next = !muted;
+    setSoundMuted(next);
+    setMuted(next);
+    if (!next) play("select");
+  };
 
   useEffect(() => {
     if (!ready) return;
@@ -43,7 +53,17 @@ export default function App() {
     <div className="app-shell">
       <header className="px-4 py-3 border-b border-line flex items-center justify-between">
         <span className="font-bold">Zivvvo</span>
-        <span className="text-xs text-ink-dim">{activeLearnerId}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-ink-dim">{learnerName ?? "Learner"}</span>
+          <button
+            onClick={toggleMute}
+            aria-label={muted ? "Unmute sounds" : "Mute sounds"}
+            className="rounded-lg bg-surface-2 px-2 py-1 text-sm"
+            title={muted ? "Unmute sounds" : "Mute sounds"}
+          >
+            {muted ? "🔇" : "🔊"}
+          </button>
+        </div>
       </header>
 
       <main className="flex-1 overflow-y-auto px-4 py-4">

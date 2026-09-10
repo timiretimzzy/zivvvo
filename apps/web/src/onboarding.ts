@@ -8,7 +8,7 @@ export const EXAM_GOALS = [
   {
     id: "zvid-provisional",
     label: "ZVID Provisional Licence",
-    blurb: "Road-rules practice for the provisional road-rule test. Blueprint: Experimental.",
+    blurb: "Road-rules practice built around the current provisional road-rule test.",
     enabled: true,
   },
   {

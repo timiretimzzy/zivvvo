@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 export function Card({ title, children, className = "" }: { title?: string; children: ReactNode; className?: string }) {
   return (
@@ -56,4 +56,20 @@ export function Tag({ children, tone = "neutral" }: { children: ReactNode; tone?
     neutral: "bg-surface-2 text-ink-dim",
   }[tone];
   return <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${tones}`}>{children}</span>;
+}
+
+export function QuestionMedia({ imageRef, className = "" }: { imageRef?: string | null; className?: string }) {
+  const [failed, setFailed] = useState(false);
+  if (!imageRef || failed) return null;
+  return (
+    <div className={`mb-3 flex justify-center overflow-hidden rounded-xl bg-surface-2 ${className}`}>
+      <img
+        src={`/images/${imageRef}`}
+        alt=""
+        loading="lazy"
+        onError={() => setFailed(true)}
+        className="max-h-52 w-auto object-contain"
+      />
+    </div>
+  );
 }

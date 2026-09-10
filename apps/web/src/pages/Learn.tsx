@@ -10,7 +10,8 @@ export default function LearnPage() {
   const rows = useMemo(() => topicMastery(attempts).sort((a, b) => b.stat.mastery - a.stat.mastery), [attempts]);
 
   const practice = (topicId: string) => {
-    const learnerId = useApp.getState().activeLearnerId!;
+    const learnerId = useApp.getState().activeLearnerId;
+    if (!learnerId) return;
     const r = smartTopicSession(topicId, attempts, learnerId);
     void startSession(r.session);
   };

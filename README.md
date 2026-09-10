@@ -76,7 +76,7 @@ data/primaed/            Scraped primaEd driving content, images, answer key
 ```bash
 npm install
 npm run dev:web       # Vite dev server for the app
-npm test              # Vitest (engines + content pack + sync core, 98 tests)
+npm test              # Vitest (engines + content pack + sync core, 196 tests)
 npm run typecheck     # tsc --noEmit across packages and the app
 npm run build:web     # copies images -> vite build -> emits dist/sw.js (PWA)
 npm run build:content # regenerate the content pack (after data changes)

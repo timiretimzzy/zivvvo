@@ -56,7 +56,7 @@ Vitest tests, typecheck and a green build.
 |------|--------|--------|
 | S7 Engagement engine — XP, streak + freeze, daily-goal presets, levels (pure reducers, persisted) | §24–26 | **Implemented** (`engagement.ts`: XP incl. hard/perfect/goal bonuses, freeze-capped streaks, triangular levels) |
 | S8 Home v2 — greeting, readiness %, next step + START, today strip, "how much time" picker | §6, 23 | **Implemented** (engagements persisted in Dexie, v2 priorities + planner cursor live, quick-set exam date, engagement chips) |
-| S9 Learn tab — adaptive vertical path with unlocks | §7, 62 | Planned |
+| S9 Learn tab — adaptive vertical path with unlocks | §7, 62 | **In progress** — the active vertical slice (see `CURRENT_STATE.md` §10); path ranking derives from the learner loop, unlocks after path behaviour lands |
 | S10 Practice challenges — Daily / Speed Run / Survival / Weakness / Redemption | §29 | Planned |
 | S11 Mistake Book — grouped mistakes with Fix/Review | §17 | Planned |
 | S12 Coach that acts — contextual reactions, "I have 5 minutes", mock-provider AI | §13–16, 40 | Planned |

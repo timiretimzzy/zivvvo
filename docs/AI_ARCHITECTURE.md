@@ -64,8 +64,8 @@ The UI renders T0 instantly; T1/T2 stream in when a provider is available.
 
 ## Status
 
-- Abstraction interface: **Planned** (Phase 1 `packages/ai-gateway` +
-  mock provider).
+- Abstraction interface: **Implemented** (`packages/ai-gateway`: types +
+  tested mock provider; no generative provider is wired yet).
 - T1/T2 generative features: **Experimental** — not part of the first launch.
 
 ## Assumptions

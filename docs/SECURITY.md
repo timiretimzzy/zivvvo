@@ -47,8 +47,12 @@ Pre-commit credential scan on the repo (any change that adds a secret fails)
 
 - Secrets policy + credential refactor: **Implemented** (verified — repo has
   zero committed credentials).
-- Backend RLS, Edge-Function service channel, content signing: **Planned**
-  (Supabase project does not exist yet).
+- Backend RLS: **Partially implemented** — migration `001_init_zivvvo.sql`
+  creates the isolated, device-scoped `zivvvo` schema with RLS gates and grants,
+  and the web client targets it (sync-supabase.ts). Exposure of the schema to
+  PostgREST on the hosted project is pending the Dashboard setting
+  (Project Settings → API → Exposed schemas → `zivvvo`).
+- Edge-Function service channel, content signing: **Planned**.
 
 ## Assumptions
 

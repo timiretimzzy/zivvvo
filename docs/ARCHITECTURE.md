@@ -96,7 +96,10 @@ documents, so that the question experience can be built and tested immediately.
 - Monorepo layout (`apps/`, `packages/`, `docs/`, data & tools pipelines):
   **Implemented**.
 - Application code, packages, offline data layer, Supabase backend:
-  **Planned** (Phase 1).
+  **Implemented** — React app (`apps/web`) on the monorepo packages,
+  Dexie offline-first persistence with the sync spine, and the isolated
+  Supabase `zivvvo` schema (migration `001`). See `CURRENT_STATE.md` for the
+  verified inventory.
 
 ## Assumptions
 

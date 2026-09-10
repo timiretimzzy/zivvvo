@@ -71,7 +71,7 @@ const PURPOSE: Record<PlanDayKind, string> = {
   recovery: "Focused work on your weakest topic.",
   review: "Keep what is due fresh â€” spaced repetition.",
   mixed: "A mixed session across everything you know.",
-  mock: "A blueprinted mock exam under exam conditions.",
+  mock: "A full practice mock exam under exam conditions.",
   "final-mock": "The dress rehearsal, right before the real thing.",
 };
 

@@ -31,7 +31,7 @@ export function Button({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`w-full rounded-xl px-4 py-3 text-sm font-semibold transition disabled:opacity-40 ${styles} ${className}`}
+      className={`w-full rounded-xl px-4 py-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40 ${styles} ${className}`}
     >
       {children}
     </button>

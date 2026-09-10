@@ -16,18 +16,16 @@ describe("content pack (content-v1.json)", () => {
     expect(pack.questions.filter((q) => q.imageRef).length).toBe(446);
   });
 
-  it("keeps answered/skip/unanswered mutually consistent with keys", () => {
-    // answered <=> has a key AND at least two options; keyed single-option
-    // rows are gated to "skip" by the generator, and keyed-but-unanswered is illegal.
-    const bad = pack.questions.filter((q) => {
-      const keyed = q.correctIndexes.length > 0;
-      const singleOption = q.options.length < 2;
-      if (q.status === "answered") return !keyed || singleOption;
-      if (keyed) return !singleOption;
-      return false;
-    });
-    expect(bad).toEqual([]);
+  it("answered is exactly keyed with >=2 options; non-answered carry zero keys", () => {
     for (const q of pack.questions) {
+      const keyed = q.correctIndexes.length > 0;
+      if (q.status === "answered") {
+        expect(keyed).toBe(true);
+        expect(q.options.length).toBeGreaterThanOrEqual(2);
+      } else {
+        expect(keyed).toBe(false);
+        expect(q.options.some((o) => o.isCorrect)).toBe(false);
+      }
       for (const i of q.correctIndexes) {
         expect(q.options[i]?.isCorrect).toBe(true);
       }

@@ -8,9 +8,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * (dynamic import) so the main PWA bundle stays offline-first: supabase-js is
  * only fetched after a sync-worthy change when the env is configured. When
  * VITE_SUPABASE_* are absent, the backend reports `configured: false` and the
- * app stays local-only.
+ * app stays local-only. It targets the isolated `zivvvo` schema (migration
+ * 001) and sends `x-device-id` so the RLS gate can scope rows to this device.
  */
-let clientPromise: Promise<SupabaseClient | null> | null = null;
+let clientPromise: Promise<SupabaseClient<any, any, any> | null> | null = null;
 
 async function getClient(): Promise<SupabaseClient | null> {
   if (clientPromise) return clientPromise;
@@ -22,6 +23,7 @@ async function getClient(): Promise<SupabaseClient | null> {
   }
   clientPromise = import("@supabase/supabase-js").then(({ createClient }) =>
     createClient(url, key, {
+      db: { schema: "zivvvo" },
       global: { headers: { "x-device-id": getDeviceId() } },
     }),
   );

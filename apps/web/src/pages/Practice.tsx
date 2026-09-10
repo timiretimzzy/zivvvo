@@ -168,7 +168,7 @@ if (done) {
       </div>
       <Card>
         <QuestionMedia imageRef={question.imageRef} />
-        <p className="text-lg font-semibold leading-snug">{question.stem}</p>
+        {question.stem && <p className="text-lg font-semibold leading-snug">{question.stem}</p>}
       </Card>
       <div className="space-y-2">
         {question.options.map((opt, i) => {

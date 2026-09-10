@@ -80,7 +80,7 @@ export function OnboardingFlow() {
             value={sel.name}
             onChange={(e) => setSel((s) => ({ ...s, name: e.target.value }))}
             placeholder="Your name"
-            className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none focus:border-primary"
+            className="w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary"
           />
           <Button
             onClick={() => {
@@ -134,7 +134,7 @@ export function OnboardingFlow() {
               onChange={(e) =>
                 setSel((s) => ({ ...s, examDate: e.target.value ? new Date(`${e.target.value}T00:00:00`).getTime() : null }))
               }
-              className="mt-1 w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none focus:border-primary"
+              className="mt-1 w-full rounded-xl border border-line bg-surface px-4 py-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />
             {sel.examDate && (
               <p className="mt-1 text-xs text-ink-dim">

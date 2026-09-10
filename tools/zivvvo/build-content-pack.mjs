@@ -225,6 +225,9 @@ for (const q of questionMap.values()) {
   /* single-option "coaching" rows are informational, not answerable MCQs */
   const status = csvStatus === "answered" && q.options.length < 2 ? "skip" : csvStatus;
 
+  /* only answered questions carry answer keys (skip/unanswered stay clean) */
+  const finalKeys = status === "answered" ? [...correctIndexes].sort((a, b) => a - b) : [];
+
   const picture = {
     ...q,
     topicId: topic ? topic[0] : "general",
@@ -233,8 +236,8 @@ for (const q of questionMap.values()) {
     explanation,
     imageRef,
     status,
-    correctIndexes: [...correctIndexes].sort((a, b) => a - b),
-    options: q.options.map((text) => ({ text, isCorrect: correctIndexes.includes(q.options.indexOf(text)) })),
+    correctIndexes: finalKeys,
+    options: q.options.map((text) => ({ text, isCorrect: finalKeys.includes(q.options.indexOf(text)) })),
   };
   delete picture.quizzes;
   delete picture.optionsRaw;

@@ -245,3 +245,15 @@ export const useApp = create<AppStore>((set, get) => ({
     });
   },
 }));
+
+// After a successful pull, absorb server attempts for the active learner into
+// memory so the UI reflects fetched data without a reload. Rows for other
+// learners on this device are persisted but kept out of the live view.
+syncManager.onMerged = (events) => {
+  const activeLearnerId = useApp.getState().activeLearnerId;
+  const existing = new Set(useApp.getState().attempts.map((a) => a.id));
+  const fresh = activeLearnerId ? events.filter((a) => a.learnerId === activeLearnerId && !existing.has(a.id)) : [];
+  if (fresh.length > 0) {
+    useApp.setState({ attempts: [...useApp.getState().attempts, ...fresh] });
+  }
+};

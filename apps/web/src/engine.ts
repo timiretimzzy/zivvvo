@@ -1,6 +1,7 @@
 import type { AttemptEvent, SessionResult, MockConfig } from "@zivvvo/assessment-engine";
 import {
   buildDiagnostic,
+  buildMistakeReviewSession,
   buildMockSession,
   buildQuickSession,
   buildReviewSession,
@@ -102,6 +103,82 @@ export function mockSession(attempts: AttemptEvent[], learnerId: string, mock: M
     { pack, attempts, seed: Date.now() % 2147483647, learnerId },
     defaultConfig,
     mock,
+  );
+}
+
+/** The weakest content topic currently flagged by the learning engine (or null). */
+export function topWeakness(attempts: AttemptEvent[]): ReturnType<typeof weaknesses>[number] | null {
+  const flagged = weaknesses(attempts);
+  return flagged.sort((a, b) => a.signal.stat.mastery - b.signal.stat.mastery)[0] ?? null;
+}
+
+/** Number of spaced-repetition cards whose next review is due right now. */
+export function dueReviewCount(reviews: ReviewState[], now = Date.now()): number {
+  return reviews.filter((r) => isDue(r, now)).length;
+}
+
+/** qids whose most recent attempt was incorrect, most recent first. Variant
+ *   attempts already record against their base qid, so the list is deduped at
+ *   the concept level. */
+export function recentMisses(attempts: AttemptEvent[]): string[] {
+  const latest = new Map<string, AttemptEvent>();
+  for (const a of attempts) {
+    const cur = latest.get(a.qid);
+    if (!cur || a.ts >= cur.ts) latest.set(a.qid, a);
+  }
+  return [...latest.values()]
+    .filter((a) => !a.isCorrect)
+    .sort((a, b) => b.ts - a.ts)
+    .map((a) => a.qid);
+}
+
+/** General adaptive practice across topics (no topic targeting). */
+export function smartSession(attempts: AttemptEvent[], learnerId: string): SessionResult {
+  return buildSmartSession(
+    { pack, attempts, seed: Date.now() % 2147483647, learnerId },
+    defaultConfig,
+  );
+}
+
+/** Focused recovery practice on one weak topic. */
+export function weaknessSession(topicId: string, attempts: AttemptEvent[], learnerId: string): SessionResult {
+  return buildWeaknessSession(
+    { pack, attempts, seed: Date.now() % 2147483647, learnerId },
+    defaultConfig,
+    topicId,
+  );
+}
+
+/** Review session over due spaced-repetition cards, or null when none are due. */
+export function dueReviewSession(
+  attempts: AttemptEvent[],
+  reviews: ReviewState[],
+  learnerId: string,
+  size?: number,
+): SessionResult | null {
+  const due = reviews.filter((r) => isDue(r, Date.now())).map((r) => r.qid);
+  if (due.length === 0) return null;
+  return buildReviewSession(
+    { pack, attempts, seed: Date.now() % 2147483647, learnerId },
+    defaultConfig,
+    due,
+    size ?? due.length,
+  );
+}
+
+/** Mistake review (variants, never the same question) over recent misses, or null when clean. */
+export function mistakeReviewSession(
+  attempts: AttemptEvent[],
+  learnerId: string,
+  size?: number,
+): SessionResult | null {
+  const misses = recentMisses(attempts);
+  if (misses.length === 0) return null;
+  return buildMistakeReviewSession(
+    { pack, attempts, seed: Date.now() % 2147483647, learnerId },
+    defaultConfig,
+    misses,
+    size,
   );
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useApp, type Tab } from "./store";
+import { useSync } from "./sync";
 import { syncManager } from "./sync-supabase";
 import { OnboardingFlow } from "./OnboardingFlow";
 import { isSoundMuted, play, setSoundMuted } from "./sound";
@@ -9,6 +10,48 @@ import PracticePage from "./pages/Practice";
 import ProgressPage from "./pages/Progress";
 import CoachPage from "./pages/Coach";
 import ErrorBoundary from "./ErrorBoundary";
+
+function SyncIndicator() {
+  const sync = useSync();
+  if (!sync.configured) return null;
+  const handleClick = () => {
+    if (sync.state !== "syncing") void syncManager.sync();
+  };
+  if (sync.state === "syncing") {
+    return (
+      <span className="flex items-center gap-1 text-xs text-ink-dim" title="Syncing…">
+        <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-ink-dim border-t-transparent" />
+      </span>
+    );
+  }
+  if (sync.state === "error") {
+    return (
+      <button
+        onClick={handleClick}
+        className="flex items-center gap-1 rounded-full bg-bad/15 px-2 py-0.5 text-xs text-bad focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        title={`Sync error: ${sync.lastError} — tap to retry`}
+      >
+        ✕ Sync
+      </button>
+    );
+  }
+  if (sync.pending > 0) {
+    return (
+      <button
+        onClick={handleClick}
+        className="flex items-center gap-1 rounded-full bg-warn/15 px-2 py-0.5 text-xs text-warn focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        title={`${sync.pending} pending — tap to sync`}
+      >
+        {sync.pending} queued
+      </button>
+    );
+  }
+  return (
+    <span className="flex items-center gap-1 text-xs text-ok" title="All synced">
+      ✓ Synced
+    </span>
+  );
+}
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: "home", label: "Home", icon: "⌂" },
@@ -54,6 +97,7 @@ export default function App() {
           <header className="px-4 py-3 border-b border-line flex items-center justify-between">
             <span className="font-bold">Zivvvo</span>
             <div className="flex items-center gap-3">
+              <SyncIndicator />
               <span className="text-xs text-ink-dim">{learnerName ?? "Learner"}</span>
               <button
                 onClick={toggleMute}

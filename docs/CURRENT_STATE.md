@@ -19,7 +19,7 @@ content generator; plus passing local gates (`npm run typecheck`, `npm test`,
 | Gate | Status |
 | --- | --- |
 | `npm run typecheck` | clean |
-| `npm test` (vitest) | 196 tests, 21 files, all pass |
+| `npm test` (vitest) | 217 tests, 23 files, all pass |
 | `npm run build:web` | green; 158/158 images copied; sw.js precaches 170 URLs |
 | PWA health | SW + manifest + icons present; `noindex` robots (intended pre-launch) |
 
@@ -97,17 +97,24 @@ stress suite over the real content bank.
   "Do it now", today's plan via `planCursor`, quick time-pick, streak/level,
   exam-date editing, goal card. Uses only `engine.ts` outputs (no UI-side
   recommendation logic).
-- **Practice** — session runner (answer → reveal → review), mode-appropriate
-  flows, review recycle list, mock exam timer, sounds + vibration hooks.
+- **Practice** — learner-state-aware mode cards (**Weakness focus** /
+  **Review due** / **Mistake review** / **Smart practice** / Quick / Mock),
+  each grounded in engine-derived state (targets the weakest flagged topic,
+  counts spaced-repetition due cards, restates recent misses as variants),
+  then the shared session runner (answer → reveal → review), review recycle
+  list, mock exam timer, sounds + vibration hooks.
 - **Progress** — readiness breakdown, topic mastery, goal, sync status card,
   full JSON data export (`zivvvo-{learnerId}.json`).
 - **Coach** — weakness evidence list with rank + reason labels (currently
   **read-only**; no actions — see §7).
 - **Persistence & offline** — Dexie v2 write-through for attempts/reviews/
   sessions/learners/meta/engagements; PWA SW precaches everything.
-- **Sync** — `SyncManager` pushes pending attempts via
-  `SupabaseSyncBackend`. `sync-supabase.ts` targets the isolated `zivvvo`
-  schema (client sets `db.schema`) and sends `x-device-id` for the RLS gate.
+- **Sync** — `SyncManager` pushes pending attempts **and pulls the device's
+  owned rows back**, merging fresh ones into Dexie and the live store
+  (`onMerged`), so data saved on one device fetches back on another (or after a
+  reinstall). `sync-supabase.ts` targets the isolated `zivvvo` schema (client
+  sets `db.schema`) and sends `x-device-id` for the RLS gate. All backend
+  failures surface as a snapshot error — never an unhandled crash.
 - **Reliability** — `ErrorBoundary` at app root; focus-visible rings on
   buttons/nav/onboarding; no-emulation flavor text.
 
@@ -127,8 +134,8 @@ stress suite over the real content bank.
 - **Weakness signals**: only *early* / *long-unreviewed* are produced;
   *recurring* / *deteriorating* logic (`classifyPattern`) never runs.
 - **Explanations**: 19% of answered questions carry one (source-capped).
-- **Learn page**: a topic **browser** (mastery-ranked list), not yet the
-  adaptive learning path — see §7.
+- **Learn page**: adaptive path landed (slice 1 below); path unlocks for
+  sequential learning and per-topic evidence depth remain.
 
 ---
 
@@ -136,11 +143,18 @@ stress suite over the real content bank.
 
 | Item | Detail | Status |
 | --- | --- | --- |
-| Remote PostgREST exposure of `zivvvo` | `GET /rest/v1/zivvvo/attempts` → 503 `PGRST002` (schema cache wedged after `alter role` + reload). `auth`/`storage` health OK → project fine, only `/rest/v1` affected. | Fix via Dashboard → API → Exposed schemas (add `zivvvo`); fallback `alter role authenticator reset pgrst.db_schemas;` then re-add. Client code already targets `zivvvo`. |
+| Remote PostgREST exposure of `zivvvo` | `GET /rest/v1/zivvvo/attempts` → 503 `PGRST002`; **root `/rest/v1/` answers (401/200)** → PostgREST is up, `zivvvo` is simply missing from `pgrst.db_schemas` (an earlier `reset` dropped it). | Fix = re-add `zivvvo`: run `supabase/migrations/002_expose_zivvvo_schema.sql` in the Dashboard SQL editor, or toggle `zivvvo` back on in Dashboard → Project Settings → API → Exposed schemas. Client code already targets `zivvvo`. |
 | "Recurring" / "Deteriorating" classification | dead code path; Coach labels unreachable | wire `classifyPattern` into the weakness pipeline when Coach actions land |
 | Settings (rename / daily-goal change) | no page; `store.updateLearner` unused from UI (only exam date editable) | under productization |
 | Content nits (non-blocking) | «double prohibition lines» ambiguity (T95Q2 ↔ t8q8, differing answers); «coach herbert» variant-phrased trio same answer | content backlog |
 | `apps/web/public/images/manifest.json` | regenerated timestamp churn on every build; tracked | consider gitignoring |
+
+**Fixed since last write-up**: app crash on Practice-started sessions (a React
+hooks-order violation — `useApp` called after an early `return`; now all hooks
+precede any conditional return) and sync now **pushes and pulls**: the backend
+grows a `pull`, the manager merges remote rows into Dexie and the live store
+via `onMerged`, and a wedged/unreachable backend degrades to an error snapshot
+instead of an unhandled rejection.
 
 ---
 
@@ -160,16 +174,17 @@ stress suite over the real content bank.
 
 ## 7. Needs productization (in priority order)
 
-1. **Learn tab → adaptive learning path** (roadmap S9). Current page is a topic
-   browser. The engines already produce what a path needs (mastery, weakness,
-   planner order, recommendation). Move the *ranking* into a domain helper and
-   have the page render it. *(selected as the first vertical slice → §10)*
+1. **Learn tab → adaptive learning path** (roadmap S9) — **delivered** (slice 1,
+   §10). Remaining depth: path unlocks, per-topic evidence depth, session
+   transition copy (What/Why/Time/Action).
 2. **Coach that acts** (S12) — weakness list has no buttons; no
    recurring/deteriorating wiring; no conversation surface.
-3. **Practice challenges** (S10) — smart/weakness entry points exist via Home/
-   Learn; dedicated challenge + mixed modes do not.
-4. **Mistake Book** (S11) — variants + mistake-review sessions exist in the
-   engine; there is no page and no auto-population from repeated failures.
+3. **Mistake Book** (S11) — variants + mistake-review sessions exist in the
+   engine, and Practice now surfaces Mistake review; there is no dedicated page
+   and no auto-grouping from repeated failures.
+4. **Practice challenges** (S10) — smart/weakness/review/mistake entry points
+   landed (slice 2, §11); Daily / Speed Run / Survival / Redemption challenge
+   modes do not.
 5. **Settings** (rename, goal, daily minutes) — dead `updateLearner` path.
 6. **Progress/readiness depth** (S6) — core exists; projection/forecast and
    shareable output (export JSON exists) are next.
@@ -213,7 +228,7 @@ Verified against code on 2026-09-10. **Stale entries marked → fix.**
 
 ---
 
-## 10. First vertical slice (in motion)
+## 10. Vertical slice 1 (delivered)
 
 **Learn tab → personalized adaptive learning path** (roadmap S9, priority P2).
 
@@ -223,14 +238,49 @@ Each entry shows status (**focus / fresh / maintained / strong**), why it's
 there (grounded reason), evidence, and one action: "Focus this" → starts a
 topic session for that content topic.
 
-- Domain: new pure helper `learnPath(...)` in the app layer that derives the
-  order from `masteryBy`, `detectWeakness`, planner/`isDue`, and the same
-  signals `getNextBestActivity` uses — so Home's "next" and Learn's "focus"
-  agree by construction. No recommendation logic in JSX.
+- Domain: pure helper `learnPath(...)` in the app layer derives the order from
+  `masteryBy`, `detectWeakness`, planner/`isDue`, and the same signals
+  `getNextBestActivity` uses — so Home's "next" and Learn's "focus" agree by
+  construction. No recommendation logic in JSX.
 - UI: Learn.tsx renders the path, a "Why these first?" note grounded in the
   entry reasons, and preserves the existing topic-session start.
-- Tests: unit tests over varied synthetic learners (fresh / weak / mixed /
-  exam-date-scheduled) asserting: order differs by state, focus matches the
-  state-derived leader, status labels are consistent, no hardcoded ordering.
+- Tests: `learnPath.test.ts` — 7 tests over varied synthetic learners
+  (fresh / weak / mixed / exam-date-scheduled) asserting order differs by
+  state, focus matches the state-derived leader, labels are consistent, no
+  hardcoded ordering.
 - Gates: `npm run typecheck`, `npm test`, `npm run build:web`.
-- Docs: mark S9 in progress here and in `ROADMAP.md`.
+- Docs: S9 marked in progress in `ROADMAP.md`.
+
+---
+
+## 11. Vertical slice 2 (in motion)
+
+**Practice tab → learner-state-aware practice modes** (priority P3, precedes
+the Mistake Book milestone).
+
+Definition: the Practice tab stops being a bare "Quick/Mock" launcher and
+offers explicit, grounded choices the engines already support — each present
+only when it is true for this learner:
+
+| Mode | Ground | When present |
+| --- | --- | --- |
+| Weakness focus | `topWeakness` (weakest topic flagged by `detectWeakness`) → `buildWeaknessSession` | a topic is flagged weak |
+| Review due | `dueReviewCount` (cards with `next <= now`) → `buildReviewSession` | ≥1 due card |
+| Mistake review | `recentMisses` (latest-per-qid wrong) → `buildMistakeReviewSession` (variants, never the same question) | ≥1 recent miss |
+| Smart practice | `buildSmartSession` (no targeting) | always |
+| Quick session | `buildQuickSession` (2 / 5 min) | always |
+| Mock exam | `buildMockSession` (`ZVID_MOCK_DEFAULT`) | always |
+
+- Domain: derivation lives in the read-only facade `engine.ts`
+  (`topWeakness`, `dueReviewCount`, `recentMisses`, `smartSession`,
+  `weaknessSession`, `dueReviewSession`, `mistakeReviewSession`) — the page
+  only renders and launches; null mode returns render a hint, never a dead
+  button.
+- Tests: `practiceModes.test.ts` — 11 tests over the real pack: recency/dedupe
+  of `recentMisses`, weakest-of-two ranking, due-window counting, null-when-clear
+  wrappers, variant restatement (`variant.of` in the miss set), topic scoping.
+- Gates: `npm run typecheck`, `npm test` (217), `npm run build:web`.
+- Docs: S10 practice challenges partially addressed (smart/weakness/review/
+  mistake entry points); challenge-only modes remain planned.
+- Next after this stops: **Mistake Book** (slice §57 — group → explain →
+  recovery → variants → improvement → state update).

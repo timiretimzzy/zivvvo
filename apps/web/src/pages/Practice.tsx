@@ -11,7 +11,17 @@ import {
 } from "@zivvvo/assessment-engine";
 import type { Question } from "@zivvvo/content";
 import { useApp } from "../store";
-import { mockSession, quickSession } from "../engine";
+import {
+  mockSession,
+  quickSession,
+  smartSession,
+  weaknessSession,
+  dueReviewSession,
+  mistakeReviewSession,
+  topWeakness,
+  dueReviewCount,
+  recentMisses,
+} from "../engine";
 import { pack } from "../catalog";
 import { Card, Button, Meter, Tag, QuestionMedia } from "../ui";
 import { play, vibrate } from "../sound";
@@ -289,32 +299,122 @@ function ReviewList({
 export default function PracticePage() {
   const activeSession = useApp((s) => s.activeSession);
   const attempts = useApp((s) => s.attempts);
+  const reviews = useApp((s) => s.reviews);
   const startSession = useApp((s) => s.startSession);
+  const learnerId = useApp((s) => s.activeLearnerId);
 
   if (activeSession) return <SessionRunner session={activeSession} />;
+  if (!learnerId) return null;
 
-  const learnerId = useApp((s) => s.activeLearnerId)!;
   const launch = (minutes: number) => {
+    play("start");
+    vibrate(20);
     const r = quickSession(attempts, learnerId, minutes);
     void startSession(r.session);
   };
+  const launchSmart = () => {
+    play("start");
+    vibrate(20);
+    const r = smartSession(attempts, learnerId);
+    void startSession(r.session);
+  };
+  const launchWeakness = () => {
+    const w = topWeakness(attempts);
+    if (!w) return;
+    play("start");
+    vibrate(20);
+    const r = weaknessSession(w.topic.id, attempts, learnerId);
+    void startSession(r.session);
+  };
+  const launchReview = () => {
+    play("start");
+    vibrate(20);
+    const r = dueReviewSession(attempts, reviews, learnerId);
+    if (r) void startSession(r.session);
+  };
+  const launchMistakes = () => {
+    play("start");
+    vibrate(20);
+    const r = mistakeReviewSession(attempts, learnerId);
+    if (r) void startSession(r.session);
+  };
   const launchMock = () => {
+    play("start");
+    vibrate(20);
     const r = mockSession(attempts, learnerId);
     void startSession(r.session);
   };
 
+  const weak = topWeakness(attempts);
+  const due = dueReviewCount(reviews);
+  const misses = recentMisses(attempts);
+
   return (
     <div className="space-y-3">
       <h1 className="text-xl font-bold">Practice</h1>
-      <p className="text-sm text-ink-dim">A compact session sized to the time you have, or the full mock experience.</p>
-      <Card>
-        <Button onClick={() => launch(2)}>Quick session (2 min)</Button>
-        <div className="mt-2">
+      <p className="text-sm text-ink-dim">
+        Choose how you want to practise. Each mode reads your progress and sizes itself to what helps next.
+      </p>
+
+      <Card title="Weakness focus">
+        {weak ? (
+          <>
+            <p className="mb-3 text-sm text-ink-dim">
+              Your weakest is <span className="font-semibold text-ink">{weak.topic.label}</span> — accuracy{" "}
+              {Math.round(weak.signal.stat.accuracy * 100)}%. Read the explanations, then lock it in.
+            </p>
+            <Button onClick={launchWeakness}>Focus on {weak.topic.label}</Button>
+          </>
+        ) : (
+          <p className="text-sm text-ink-dim">
+            No weak topics right now — nudge it with a smart session instead.
+          </p>
+        )}
+      </Card>
+
+      <Card title="Review due">
+        {due > 0 ? (
+          <>
+            <p className="mb-3 text-sm text-ink-dim">
+              {due} question{due === 1 ? "" : "s"} due for review. Keep them fresh so they stay learned.
+            </p>
+            <Button onClick={launchReview}>Review now</Button>
+          </>
+        ) : (
+          <p className="text-sm text-ink-dim">Nothing due — your spaced repetition is on track.</p>
+        )}
+      </Card>
+
+      <Card title="Mistake review">
+        {misses.length > 0 ? (
+          <>
+            <p className="mb-3 text-sm text-ink-dim">
+              {misses.length} recent {misses.length === 1 ? "miss" : "misses"}, restated so you learn the rule, not the answer position.
+            </p>
+            <Button onClick={launchMistakes}>Review mistakes</Button>
+          </>
+        ) : (
+          <p className="text-sm text-ink-dim">No recent misses — nice work.</p>
+        )}
+      </Card>
+
+      <Card title="Smart practice">
+        <p className="mb-3 text-sm text-ink-dim">
+          A short mixed session drawn from your current learning state. The general-purpose warm-up.
+        </p>
+        <Button onClick={launchSmart}>Start smart session</Button>
+      </Card>
+
+      <Card title="Quick session">
+        <p className="mb-3 text-sm text-ink-dim">A compact session sized to the time you have.</p>
+        <div className="grid grid-cols-2 gap-2">
+          <Button onClick={() => launch(2)}>2 minutes</Button>
           <Button variant="ghost" onClick={() => launch(5)}>
-            Quick session (5 min)
+            5 minutes
           </Button>
         </div>
       </Card>
+
       <Card title="Mock exam">
         <p className="mb-3 text-sm text-ink-dim">
           {ZVID_MOCK_DEFAULT.questionCount} questions · {ZVID_MOCK_DEFAULT.durationMin} minutes · pass mark at{" "}
@@ -323,11 +423,6 @@ export default function PracticePage() {
         <Button variant="ghost" onClick={launchMock}>
           Start mock exam
         </Button>
-      </Card>
-      <Card title="Tip">
-        <p className="text-sm text-ink-dim">
-          The Home tab recommends the single most valuable next session for you.
-        </p>
       </Card>
     </div>
   );

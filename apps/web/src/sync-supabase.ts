@@ -1,5 +1,6 @@
 import type { AttemptRow, SyncBackend } from "./sync";
-import { SyncManager, getDeviceId } from "./sync";
+import { SyncManager, getDeviceId, rowToAttempt } from "./sync";
+import type { AttemptEvent } from "@zivvvo/assessment-engine";
 import { db } from "./db";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -32,7 +33,11 @@ async function getClient(): Promise<SupabaseClient | null> {
 
 export class SupabaseSyncBackend implements SyncBackend {
   async configured(): Promise<boolean> {
-    return (await getClient()) !== null;
+    try {
+      return (await getClient()) !== null;
+    } catch {
+      return false;
+    }
   }
 
   async push(rows: AttemptRow[]): Promise<void> {
@@ -40,6 +45,18 @@ export class SupabaseSyncBackend implements SyncBackend {
     if (!c) throw new Error("Supabase not configured");
     const { error } = await c.from("attempts").upsert(rows, { onConflict: "attempt_id" });
     if (error) throw new Error(error.message);
+  }
+
+  async pull(deviceId: string): Promise<AttemptRow[]> {
+    const c = await getClient();
+    if (!c) throw new Error("Supabase not configured");
+    const { data, error } = await c
+      .from("attempts")
+      .select("*")
+      .eq("device_id", deviceId)
+      .order("ts", { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []) as AttemptRow[];
   }
 }
 
@@ -51,6 +68,17 @@ const dexieHost = {
     await db.transaction("rw", db.attempts, async () => {
       for (const id of ids) await db.attempts.update(id, { syncedAt: at });
     });
+  },
+  /** Insert server rows this device has never seen; local rows always win. */
+  async mergeRemote(rows: AttemptRow[]): Promise<AttemptEvent[]> {
+    if (rows.length === 0) return [];
+    const ids = rows.map((r) => r.attempt_id);
+    const existing = new Set(
+      (await db.attempts.bulkGet(ids)).filter((a): a is AttemptEvent => Boolean(a)).map((a) => a.id),
+    );
+    const fresh = rows.filter((r) => !existing.has(r.attempt_id)).map(rowToAttempt);
+    if (fresh.length > 0) await db.attempts.bulkPut(fresh);
+    return fresh;
   },
 };
 

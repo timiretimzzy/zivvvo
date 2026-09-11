@@ -1,6 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { AttemptEvent } from "@zivvvo/assessment-engine";
-import { DEFAULT_SNAPSHOT, SyncManager, attemptToRow, getDeviceId, useSync, type SyncBackend, type SyncHost } from "./sync";
+import {
+  DEFAULT_SNAPSHOT,
+  SyncManager,
+  attemptToRow,
+  getDeviceId,
+  rowToAttempt,
+  useSync,
+  type AttemptRow,
+  type SyncBackend,
+  type SyncHost,
+} from "./sync";
 
 const att = (id: string, overrides: Partial<AttemptEvent> = {}): AttemptEvent => ({
   id,
@@ -17,20 +27,27 @@ const att = (id: string, overrides: Partial<AttemptEvent> = {}): AttemptEvent =>
   ...overrides,
 });
 
-const fakeHost = (pending: AttemptEvent[]): SyncHost & { marked: string[] } => {
+const fakeHost = (pending: AttemptEvent[]): SyncHost & { marked: string[]; merged: AttemptEvent[] } => {
   const marked: string[] = [];
+  const merged: AttemptEvent[] = [];
   return {
     marked,
+    merged,
     async readPending() {
       return pending;
     },
     async markSynced(ids) {
       marked.push(...ids);
     },
+    async mergeRemote(rows) {
+      const events = rows.map(rowToAttempt);
+      merged.push(...events);
+      return events;
+    },
   };
 };
 
-const fakeBackend = (configured = true): SyncBackend & { pushed: string[] } => {
+const fakeBackend = (configured = true, remote: AttemptRow[] = []): SyncBackend & { pushed: string[] } => {
   const pushed: string[] = [];
   return {
     pushed,
@@ -39,6 +56,9 @@ const fakeBackend = (configured = true): SyncBackend & { pushed: string[] } => {
     },
     async push(r: { attempt_id: string }[]) {
       pushed.push(...r.map((x) => x.attempt_id));
+    },
+    async pull() {
+      return remote;
     },
   };
 };
@@ -103,6 +123,22 @@ describe("SyncManager.sync", () => {
     expect(snap.pending).toBe(0);
   });
 
+  it("fetches remote rows, merges them locally, and notifies onMerged", async () => {
+    const remote = [attemptToRow(att("att_9", { ts: 300 }), "dev-1")];
+    const host = fakeHost([]);
+    const backend = fakeBackend(true, remote);
+    const manager = new SyncManager(host, backend);
+    const received: AttemptEvent[] = [];
+    manager.onMerged = (e) => received.push(...e);
+
+    const snap = await manager.sync("dev-1");
+
+    expect(host.merged.length).toBe(1);
+    expect(received.map((a) => a.id)).toEqual(["att_9"]);
+    expect(received[0]!.syncedAt).toBeNull();
+    expect(snap).toMatchObject({ configured: true, state: "idle", pending: 0 });
+  });
+
   it("surfaces backend errors and does not mark anything synced", async () => {
     const host = fakeHost([att("att_1")]);
     const backend: SyncBackend = {
@@ -111,6 +147,9 @@ describe("SyncManager.sync", () => {
       },
       async push() {
         throw new Error("network down");
+      },
+      async pull() {
+        return [];
       },
     };
     const manager = new SyncManager(host, backend);
@@ -121,6 +160,48 @@ describe("SyncManager.sync", () => {
     expect(snap.state).toBe("error");
     expect(snap.lastError).toBe("network down");
     expect(snap.pending).toBe(1);
+  });
+
+  it("reports the pull phase failing as an error state", async () => {
+    const host = fakeHost([]);
+    const backend: SyncBackend = {
+      async configured() {
+        return true;
+      },
+      async push() {
+        return;
+      },
+      async pull() {
+        throw new Error("schema cache wedged");
+      },
+    };
+    const manager = new SyncManager(host, backend);
+
+    const snap = await manager.sync("dev-1");
+
+    expect(snap.state).toBe("error");
+    expect(snap.lastError).toMatch(/schema cache/);
+  });
+
+  it("treats a throwing backend as offline-only instead of crashing", async () => {
+    const host = fakeHost([att("att_1")]);
+    const backend: SyncBackend = {
+      async configured() {
+        throw new Error("supabase-js failed to load");
+      },
+      async push() {
+        throw new Error("never called");
+      },
+      async pull() {
+        throw new Error("never called");
+      },
+    };
+    const manager = new SyncManager(host, backend);
+
+    const snap = await manager.sync("dev-1");
+
+    expect(snap.configured).toBe(false);
+    expect(host.marked).toEqual([]);
   });
 
   it("reports configured:false when no backend is wired and never pushes", async () => {

@@ -24,15 +24,21 @@ export interface AttemptRow {
 }
 
 export interface SyncBackend {
-  /** True when the backend is wired (env present). Resolves without network. */
+  /** True when the backend is wired (env present). Resolves without network.
+   *   Never throws — returns false when the backend is unreachable. */
   configured(): Promise<boolean>;
+  /** Upsert pending rows into the remote store. */
   push(rows: AttemptRow[]): Promise<void>;
+  /** Fetch every attempt row this device is allowed to read (device-scoped). */
+  pull(deviceId: string): Promise<AttemptRow[]>;
 }
 
 export interface SyncHost {
   /** Pending = rows whose syncedAt is still null. */
   readPending(): Promise<AttemptEvent[]>;
   markSynced(ids: string[], at: number): Promise<void>;
+  /** Persist remote rows that are not yet stored locally; returns the new ones. */
+  mergeRemote(rows: AttemptRow[], deviceId: string): Promise<AttemptEvent[]>;
 }
 
 export type SyncState = "idle" | "syncing" | "error";
@@ -114,42 +120,94 @@ export function attemptToRow(a: AttemptEvent, deviceId: string): AttemptRow {
   };
 }
 
+/** Map a server row back onto the local attempt spine (camelCase). */
+export function rowToAttempt(row: AttemptRow): AttemptEvent {
+  return {
+    id: row.attempt_id,
+    learnerId: row.learner_id,
+    qid: row.qid,
+    sessionId: row.session_id,
+    mode: row.mode as AttemptEvent["mode"],
+    selected: row.selected,
+    isCorrect: row.is_correct,
+    confidence: row.confidence as AttemptEvent["confidence"],
+    durationMs: row.duration_ms ?? 0,
+    ts: row.ts,
+    syncedAt: row.synced_at ?? null,
+  };
+}
+
 export class SyncManager {
+  /** Invoked with newly-merged attempt events after a successful pull, so the
+   *   in-memory store can absorb server data without a reload. */
+  onMerged: ((events: AttemptEvent[]) => void) | null = null;
+
   constructor(private host: SyncHost, private backend: SyncBackend) {}
 
   async refreshPending(): Promise<number> {
-    const pending = (await this.host.readPending()).length;
-    useSync.getState().setSnapshot({ pending, configured: await this.backend.configured() });
+    let configured = false;
+    try {
+      configured = await this.backend.configured();
+    } catch {
+      /* backend unreachable — report as offline-only */
+    }
+    let pending = 0;
+    try {
+      pending = (await this.host.readPending()).length;
+    } catch {
+      /* IndexedDB unavailable — keep the last known snapshot */
+    }
+    useSync.getState().setSnapshot({ pending, configured });
     return pending;
   }
 
   async sync(deviceId = getDeviceId()): Promise<SyncSnapshot> {
     const set = useSync.getState().setSnapshot;
-    const configured = await this.backend.configured();
+    let configured = false;
+    try {
+      configured = await this.backend.configured();
+    } catch {
+      configured = false;
+    }
     if (!configured) {
       set({ configured: false, state: "idle" });
-      return { ...DEFAULT_SNAPSHOT, configured: false, pending: (await this.host.readPending()).length };
-    }
-    const pending = await this.host.readPending();
-    set({ configured: true, state: "syncing", pending: pending.length, lastError: null });
-    if (pending.length === 0) {
-      set({ configured: true, state: "idle", pending: 0 });
-      return { configured: true, state: "idle", pending: 0, lastRun: useSync.getState().lastRun, lastError: null };
+      return { ...DEFAULT_SNAPSHOT, configured: false, pending: await this.pendingCount() };
     }
     try {
-      const rows = pending.map((a) => attemptToRow(a, deviceId));
-      await this.backend.push(rows);
-      const now = Date.now();
-      await this.host.markSynced(
-        rows.map((r) => r.attempt_id),
-        now,
-      );
-      set({ configured: true, state: "idle", pending: 0, lastRun: now, lastError: null });
-      return { configured: true, state: "idle", pending: 0, lastRun: now, lastError: null };
+      const pending = await this.host.readPending();
+      set({ configured: true, state: "syncing", pending: pending.length, lastError: null });
+
+      if (pending.length > 0) {
+        const rows = pending.map((a) => attemptToRow(a, deviceId));
+        await this.backend.push(rows);
+        const now = Date.now();
+        await this.host.markSynced(
+          rows.map((r) => r.attempt_id),
+          now,
+        );
+      }
+
+      // Third phase: fetch whatever this device can read back (another device,
+      // a reinstall, or rows this session produced) and merge locally.
+      const remote = await this.backend.pull(deviceId);
+      const fresh = await this.host.mergeRemote(remote, deviceId);
+      if (fresh.length > 0) this.onMerged?.(fresh);
+
+      const lastRun = Date.now();
+      set({ configured: true, state: "idle", pending: 0, lastRun, lastError: null });
+      return { configured: true, state: "idle", pending: 0, lastRun, lastError: null };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       set({ configured: true, state: "error", lastError: message });
-      return { configured: true, state: "error", pending: pending.length, lastRun: useSync.getState().lastRun, lastError: message };
+      return { configured: true, state: "error", pending: await this.pendingCount(), lastRun: useSync.getState().lastRun, lastError: message };
+    }
+  }
+
+  private async pendingCount(): Promise<number> {
+    try {
+      return (await this.host.readPending()).length;
+    } catch {
+      return 0;
     }
   }
 }

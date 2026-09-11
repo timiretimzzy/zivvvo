@@ -1,7 +1,7 @@
 {
   "name": "Zivvvo — ZVID Provisional Licence Prep",
   "short_name": "Zivvvo",
-  "description": "Offline-first adaptive practice for the Zimbabwe VID provisional licence test.",
+  "description": "Offline-first adaptive practice for the Zimbabwe VID provisional licence test. 1,200+ questions, AI explanations, and a smart study plan.",
   "id": "/",
   "start_url": "/",
   "scope": "/",
@@ -9,8 +9,22 @@
   "orientation": "portrait",
   "background_color": "#0f172a",
   "theme_color": "#111827",
+  "categories": ["education", "productivity"],
+  "lang": "en",
+  "dir": "ltr",
+  "iarc_rating_id": "",
+  "prefer_related_applications": false,
   "icons": [
     { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Quick Practice",
+      "short_name": "Practice",
+      "url": "/?tab=practice",
+      "description": "Start a 5-minute practice session"
+    }
   ]
 }

@@ -1,6 +1,7 @@
 import { contentPack } from "@zivvvo/content";
 import type { Topic } from "@zivvvo/content";
 import type { TopicCatalog } from "@zivvvo/learning-engine";
+import { secureQuestion } from "./content-security";
 
 export const pack = contentPack;
 
@@ -18,4 +19,14 @@ export const catalog: TopicCatalog = {
 
 export function questionById(qid: string) {
   return pack.questions.find((q) => q.qid === qid) ?? null;
+}
+
+/**
+ * Return a question with options shuffled for the given user (watermark).
+ * Falls back to the unsecured question if qid is not found.
+ */
+export function secureQuestionById(qid: string, userId: string) {
+  const q = questionById(qid);
+  if (!q) return null;
+  return secureQuestion(q, userId);
 }

@@ -12,6 +12,7 @@ export interface StoredLearner {
   examDate?: number;
   dailyMinutes?: number;
   initialConfidence?: ConfidenceBand;
+  supabaseUserId?: string;
 }
 
 export type ReviewRow = ReviewState & { id: string };

@@ -20,11 +20,12 @@ import {
 } from "@zivvvo/learning-engine";
 import { db, loadLearnerData, persistAttempt, persistEngagement, persistReview, persistSession, type StoredLearner } from "./db";
 import { syncManager } from "./sync-supabase";
+import { getSupabaseUserId, signOut as authSignOut } from "./auth";
 import { DEMO_LEARNERS, demoEngagement, demoLearnerRecord, sealedAttemptsFor } from "./seed";
 import { pack } from "./catalog";
 import type { ConfidenceBand, GoalId } from "./onboarding";
 
-export type Tab = "home" | "learn" | "practice" | "progress" | "coach";
+export type Tab = "home" | "learn" | "practice" | "progress" | "coach" | "settings";
 
 /** Guard so the XP-granting daily-goal bonus is awarded at most once per day. */
 let dailyGoalRewardedDay = -1;
@@ -58,6 +59,7 @@ completeSession: () => Promise<void>;
   /** Reduce one engagement event, persist, and re-render. */
   advanceEngagement: (event: EngagementEvent) => void;
   resetDemo: () => Promise<void>;
+  signOut: () => Promise<void>;
 }
 
 const MODE_BY_TYPE: Record<LearningSession["type"], LearningMode> = {
@@ -118,6 +120,7 @@ export const useApp = create<AppStore>((set, get) => ({
 
   completeOnboarding: async ({ name, goal, examDate, dailyMinutes, initialConfidence }) => {
     const id = `lrn_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    const supabaseUserId = getSupabaseUserId();
     const learner: StoredLearner = {
       id,
       name: name.trim() || "Learner",
@@ -127,6 +130,7 @@ export const useApp = create<AppStore>((set, get) => ({
       examDate,
       dailyMinutes,
       initialConfidence,
+      ...(supabaseUserId ? { supabaseUserId } : {}),
     };
     await db.learners.put(learner);
     await persistEngagement(id, initialEngagementState(dailyMinutes));
@@ -230,6 +234,24 @@ export const useApp = create<AppStore>((set, get) => ({
 
   resetDemo: async () => {
     dailyGoalRewardedDay = -1;
+    await db.delete();
+    await db.open();
+    set({
+      ready: true,
+      learners: [],
+      activeLearnerId: null,
+      attempts: [],
+      reviews: [],
+      sessions: [],
+      engagement: initialEngagementState(),
+      activeSession: null,
+      tab: "home",
+    });
+  },
+
+  signOut: async () => {
+    dailyGoalRewardedDay = -1;
+    await authSignOut();
     await db.delete();
     await db.open();
     set({

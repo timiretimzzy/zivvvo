@@ -17,7 +17,14 @@ async function getClient(): Promise<SupabaseClient | null> {
     return null;
   }
   clientPromise = import("@supabase/supabase-js").then(({ createClient }) => {
-    const c = createClient(url, key);
+    const c = createClient(url, key, {
+      auth: {
+        flowType: "pkce",
+        detectSessionInUrl: true,
+        persistSession: true,
+        autoRefreshToken: true,
+      },
+    });
     c.auth.onAuthStateChange((_event, session) => {
       const user = session?.user ?? null;
       cachedUser = user;
@@ -53,11 +60,25 @@ async function initAuth(): Promise<void> {
 
 export async function signInWithGoogle(): Promise<void> {
   const c = await getClient();
-  if (!c) throw new Error("Supabase not configured");
-  await c.auth.signInWithOAuth({
+  if (!c) {
+    console.error("[Zivvvo] Supabase client not initialised — check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY");
+    throw new Error("Supabase not configured");
+  }
+  const { data, error } = await c.auth.signInWithOAuth({
     provider: "google",
-    options: { redirectTo: window.location.origin },
+    options: {
+      redirectTo: window.location.origin,
+      skipBrowserRedirect: false,
+    },
   });
+  if (error) {
+    console.error("[Zivvvo] signInWithOAuth error:", error.message, error);
+    throw error;
+  }
+  // If Supabase returns a URL instead of redirecting, navigate manually
+  if (data?.url) {
+    window.location.href = data.url;
+  }
 }
 
 export async function signOut(): Promise<void> {

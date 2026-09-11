@@ -59,11 +59,15 @@ function SyncIndicator() {
 
 function LoginScreen() {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const handleSignIn = async () => {
     setLoading(true);
+    setError(null);
     try {
       await signInWithGoogle();
-    } catch {
+    } catch (e: any) {
+      console.error("[Zivvvo] Login failed:", e);
+      setError(e?.message ?? "Sign-in failed. Check console for details.");
       setLoading(false);
     }
   };
@@ -77,6 +81,9 @@ function LoginScreen() {
         <Button onClick={handleSignIn} disabled={loading}>
           {loading ? "Redirecting…" : "Sign in with Google"}
         </Button>
+        {error && (
+          <p className="text-sm text-bad bg-bad/10 rounded-xl px-4 py-2">{error}</p>
+        )}
         <p className="text-xs text-ink-dim">Sign in to sync your progress across devices.</p>
       </div>
     </div>
@@ -209,7 +216,7 @@ export default function App() {
             )}
           </main>
 
-          <nav className="safe-bottom grid grid-cols-5 border-t border-line bg-surface">
+          <nav className="safe-bottom grid grid-cols-5 border-t border-line bg-surface relative z-50">
             {TABS.map((t) => (
               <button
                 key={t.id}

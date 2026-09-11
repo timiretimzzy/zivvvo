@@ -12,7 +12,7 @@ describe("content pack (content-v1.json)", () => {
     expect(pack.questions.length).toBe(pack.stats.total);
     expect(pack.stats.total).toBe(1249);
     expect(pack.questions.filter((q) => q.status === "answered").length).toBe(980);
-    expect(pack.questions.filter((q) => q.explanation).length).toBe(242);
+    expect(pack.questions.filter((q) => q.explanation).length).toBe(989);
     expect(pack.questions.filter((q) => q.imageRef).length).toBe(446);
   });
 

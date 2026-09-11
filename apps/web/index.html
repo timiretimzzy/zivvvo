@@ -15,7 +15,14 @@
     <title>Zivvvo — Road Rules Practice</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="splash" style="display:flex;align-items:center;justify-content:center;height:100vh;width:100vw;background:#111827;position:fixed;top:0;left:0;z-index:9999">
+        <img src="/icons/icon-192.png" alt="Zivvvo" style="width:96px;height:96px;animation:pulse 1s ease-in-out infinite" />
+      </div>
+    </div>
+    <script>
+      window.__splashStart = Date.now();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -25,6 +25,9 @@ import {
 import { pack } from "../catalog";
 import { Card, Button, Meter, Tag, QuestionMedia } from "../ui";
 import { play, vibrate } from "../sound";
+import Nuggets from "./Nuggets";
+
+/* ── Session Runner ─────────────────────────────────────────────── */
 
 function SessionRunner({ session }: { session: LearningSession }) {
   const recordAnswer = useApp((s) => s.recordAnswer);
@@ -54,6 +57,7 @@ function SessionRunner({ session }: { session: LearningSession }) {
 
   const question: Question | undefined = session.questions[index];
   const total = session.questions.length;
+  const topicLabel = question ? pack.topics.find((t) => t.id === question.topicId)?.label : null;
 
   const finish = () => {
     const sessionAttempts = allAttempts.filter((a) => a.sessionId === session.id);
@@ -86,6 +90,22 @@ function SessionRunner({ session }: { session: LearningSession }) {
     });
   };
 
+  const onSkip = () => {
+    play("select");
+    if (!question) return;
+    const durationMs = Math.max(250, Date.now() - startedAt.current);
+    void recordAnswer(question, [], "guess", durationMs).then(() => {
+      if (index + 1 < total) {
+        setIndex(index + 1);
+        setSelected([]);
+        setRevealed(false);
+        startedAt.current = Date.now();
+      } else {
+        finish();
+      }
+    });
+  };
+
   const summary = useMemo(() => {
     if (!done || !session) return null;
     const sessionAttempts = allAttempts.filter((a) => a.sessionId === session.id);
@@ -100,7 +120,8 @@ function SessionRunner({ session }: { session: LearningSession }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [done, session, allAttempts]);
 
-if (done) {
+  /* ── Session complete ── */
+  if (done) {
     const s = summary;
     const m = isMock && s ? mockScore(allAttempts.filter((a) => a.sessionId === session.id), ZVID_MOCK_DEFAULT) : null;
     const sessionAttempts = allAttempts.filter((a) => a.sessionId === session.id);
@@ -161,25 +182,36 @@ if (done) {
 
   if (!question) return null;
 
+  /* ── Active question ── */
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      {/* Progress + timer */}
+      <div className="flex items-center gap-3">
+        <span className="text-xs font-semibold text-ink-dim tabular-nums">
+          {index + 1}/{total}
+        </span>
         <div className="flex-1">
           <Meter value={(index + (revealed ? 1 : 0)) / total} />
         </div>
         {isMock && (
-          <span className="ml-3 whitespace-nowrap rounded-full bg-surface-2 px-2 py-0.5 text-xs tabular-nums text-ink-dim">
-            {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")} left
+          <span className="whitespace-nowrap rounded-full bg-surface-2 px-2 py-0.5 text-xs tabular-nums text-ink-dim">
+            {Math.floor(secondsLeft / 60)}:{String(secondsLeft % 60).padStart(2, "0")}
           </span>
         )}
       </div>
-      <div className="text-xs text-ink-dim">
-        Question {index + 1} of {total} · {session.title}
-      </div>
+
+      {/* Topic tag */}
+      {topicLabel && (
+        <div className="text-xs text-ink-dim">{topicLabel}</div>
+      )}
+
+      {/* Question */}
       <Card>
         <QuestionMedia imageRef={question.imageRef} />
         {question.stem && <p className="text-lg font-semibold leading-snug">{question.stem}</p>}
       </Card>
+
+      {/* Options */}
       <div className="space-y-2">
         {question.options.map((opt, i) => {
           const isSel = selected.includes(i);
@@ -198,16 +230,12 @@ if (done) {
         })}
       </div>
 
+      {/* Post-answer: explanation + confidence */}
       {revealed ? (
         <>
-          {!isMock &&
-            (question.explanation ? (
-              <Card title="Why">{question.explanation}</Card>
-            ) : (
-              <Card title="Why">
-                <p className="text-sm text-ink-dim">No explanation written for this one yet — the rule itself is the reference.</p>
-              </Card>
-            ))}
+          {!isMock && question.explanation && (
+            <Card title="Why">{question.explanation}</Card>
+          )}
           <div className="rounded-2xl border border-line bg-surface p-4">
             <p className="text-sm text-ink-dim mb-2">How confident were you?</p>
             <div className="grid grid-cols-3 gap-2">
@@ -220,26 +248,38 @@ if (done) {
           </div>
         </>
       ) : (
-        <Button
-          onClick={() => {
-            if (!selected.length) return;
-            if (gradeQuestion(question, selected)) {
-              play("correct");
-              vibrate(15);
-            } else {
-              play("wrong");
-              vibrate([30, 40, 30]);
-            }
-            setRevealed(true);
-          }}
-          disabled={selected.length === 0}
-        >
-          Check answer
-        </Button>
+        <>
+          <Button
+            onClick={() => {
+              if (!selected.length) return;
+              if (gradeQuestion(question, selected)) {
+                play("correct");
+                vibrate(15);
+              } else {
+                play("wrong");
+                vibrate([30, 40, 30]);
+              }
+              setRevealed(true);
+            }}
+            disabled={selected.length === 0}
+          >
+            Check answer
+          </Button>
+          {!isMock && (
+            <button
+              onClick={onSkip}
+              className="w-full py-2 text-xs text-ink-dim hover:text-ink transition"
+            >
+              Skip this one
+            </button>
+          )}
+        </>
       )}
     </div>
   );
 }
+
+/* ── Review List ─────────────────────────────────────────────── */
 
 function ReviewList({
   session,
@@ -277,7 +317,9 @@ function ReviewList({
             <p className="text-ink-dim">
               Your answer:{" "}
               <span className={a.isCorrect ? "text-ok" : "text-bad"}>
-                {a.selected.map((i) => q.options[i]?.text).filter(Boolean).join(", ") || "no answer"}
+                {a.selected.length > 0
+                  ? a.selected.map((i) => q.options[i]?.text).filter(Boolean).join(", ")
+                  : "skipped"}
               </span>
             </p>
             {!a.isCorrect && (
@@ -296,12 +338,17 @@ function ReviewList({
   );
 }
 
+/* ── Main Practice Page ─────────────────────────────────────── */
+
+type PracticeMode = "quiz" | "read";
+
 export default function PracticePage() {
   const activeSession = useApp((s) => s.activeSession);
   const attempts = useApp((s) => s.attempts);
   const reviews = useApp((s) => s.reviews);
   const startSession = useApp((s) => s.startSession);
   const learnerId = useApp((s) => s.activeLearnerId);
+  const [mode, setMode] = useState<PracticeMode>("quiz");
 
   if (activeSession) return <SessionRunner session={activeSession} />;
   if (!learnerId) return null;
@@ -348,82 +395,113 @@ export default function PracticePage() {
   const weak = topWeakness(attempts);
   const due = dueReviewCount(reviews);
   const misses = recentMisses(attempts);
+  const hasDue = weak || due > 0 || misses.length > 0;
+
+  if (mode === "read") {
+    return (
+      <div className="space-y-3">
+        <ModeToggle mode={mode} onChange={setMode} />
+        <Nuggets />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
-      <h1 className="text-xl font-bold">Practice</h1>
-      <p className="text-sm text-ink-dim">
-        Choose how you want to practise. Each mode reads your progress and sizes itself to what helps next.
-      </p>
+      <ModeToggle mode={mode} onChange={setMode} />
 
-      <Card title="Weakness focus">
-        {weak ? (
-          <>
-            <p className="mb-3 text-sm text-ink-dim">
-              Your weakest is <span className="font-semibold text-ink">{weak.topic.label}</span> — accuracy{" "}
-              {Math.round(weak.signal.stat.accuracy * 100)}%. Read the explanations, then lock it in.
-            </p>
-            <Button onClick={launchWeakness}>Focus on {weak.topic.label}</Button>
-          </>
-        ) : (
-          <p className="text-sm text-ink-dim">
-            No weak topics right now — nudge it with a smart session instead.
-          </p>
-        )}
-      </Card>
+      {/* ── Recommended (only when something is actionable) ── */}
+      {hasDue && (
+        <>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-dim">What needs you</h2>
+          {weak && (
+            <Card>
+              <div className="flex items-center gap-2 mb-2">
+                <Tag tone="bad">Weakness</Tag>
+              </div>
+              <p className="text-sm text-ink-dim">
+                Your weakest topic is <span className="font-semibold text-ink">{weak.topic.label}</span> at{" "}
+                {Math.round(weak.signal.stat.accuracy * 100)}% accuracy.
+              </p>
+              <Button onClick={launchWeakness} className="mt-3">Focus on {weak.topic.label}</Button>
+            </Card>
+          )}
+          {due > 0 && (
+            <Card>
+              <div className="flex items-center gap-2 mb-2">
+                <Tag tone="warn">Review</Tag>
+              </div>
+              <p className="text-sm text-ink-dim">
+                {due} question{due === 1 ? "" : "s"} due for spaced repetition review.
+              </p>
+              <Button onClick={launchReview} className="mt-3">Review now</Button>
+            </Card>
+          )}
+          {misses.length > 0 && (
+            <Card>
+              <div className="flex items-center gap-2 mb-2">
+                <Tag tone="warn">Mistakes</Tag>
+              </div>
+              <p className="text-sm text-ink-dim">
+                {misses.length} recent {misses.length === 1 ? "miss" : "misses"} to learn from.
+              </p>
+              <Button onClick={launchMistakes} className="mt-3">Review mistakes</Button>
+            </Card>
+          )}
+        </>
+      )}
 
-      <Card title="Review due">
-        {due > 0 ? (
-          <>
-            <p className="mb-3 text-sm text-ink-dim">
-              {due} question{due === 1 ? "" : "s"} due for review. Keep them fresh so they stay learned.
-            </p>
-            <Button onClick={launchReview}>Review now</Button>
-          </>
-        ) : (
-          <p className="text-sm text-ink-dim">Nothing due — your spaced repetition is on track.</p>
-        )}
-      </Card>
-
-      <Card title="Mistake review">
-        {misses.length > 0 ? (
-          <>
-            <p className="mb-3 text-sm text-ink-dim">
-              {misses.length} recent {misses.length === 1 ? "miss" : "misses"}, restated so you learn the rule, not the answer position.
-            </p>
-            <Button onClick={launchMistakes}>Review mistakes</Button>
-          </>
-        ) : (
-          <p className="text-sm text-ink-dim">No recent misses — nice work.</p>
-        )}
-      </Card>
-
-      <Card title="Smart practice">
-        <p className="mb-3 text-sm text-ink-dim">
-          A short mixed session drawn from your current learning state. The general-purpose warm-up.
+      {/* ── Quick start ── */}
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-dim">Quick start</h2>
+      <Card>
+        <p className="text-sm text-ink-dim mb-3">
+          Smart session picks questions from your current learning state automatically.
         </p>
         <Button onClick={launchSmart}>Start smart session</Button>
       </Card>
-
-      <Card title="Quick session">
-        <p className="mb-3 text-sm text-ink-dim">A compact session sized to the time you have.</p>
-        <div className="grid grid-cols-2 gap-2">
-          <Button onClick={() => launch(2)}>2 minutes</Button>
-          <Button variant="ghost" onClick={() => launch(5)}>
-            5 minutes
-          </Button>
+      <Card>
+        <p className="text-sm text-ink-dim mb-3">How much time do you have?</p>
+        <div className="grid grid-cols-4 gap-2">
+          {[2, 5, 10, 20].map((m) => (
+            <Button key={m} variant="ghost" className="!p-2" onClick={() => launch(m)}>
+              {m}m
+            </Button>
+          ))}
         </div>
       </Card>
 
-      <Card title="Mock exam">
-        <p className="mb-3 text-sm text-ink-dim">
-          {ZVID_MOCK_DEFAULT.questionCount} questions · {ZVID_MOCK_DEFAULT.durationMin} minutes · pass mark at{" "}
-          {Math.round(ZVID_MOCK_DEFAULT.passMark * 100)}%. The closest run-through of the real test you can do on the phone.
+      {/* ── Challenge ── */}
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-dim">Challenge</h2>
+      <Card>
+        <p className="text-sm text-ink-dim mb-3">
+          Full mock exam: {ZVID_MOCK_DEFAULT.questionCount} questions · {ZVID_MOCK_DEFAULT.durationMin} min ·{" "}
+          pass mark {Math.round(ZVID_MOCK_DEFAULT.passMark * 100)}%.
         </p>
-        <Button variant="ghost" onClick={launchMock}>
-          Start mock exam
-        </Button>
+        <Button variant="ghost" onClick={launchMock}>Start mock exam</Button>
       </Card>
+    </div>
+  );
+}
+
+/* ── Mode Toggle ─────────────────────────────────────────────── */
+
+function ModeToggle({ mode, onChange }: { mode: PracticeMode; onChange: (m: PracticeMode) => void }) {
+  return (
+    <div className="flex rounded-xl bg-surface-2 p-1">
+      {([
+        { id: "quiz" as const, label: "Quiz" },
+        { id: "read" as const, label: "Read" },
+      ]).map((t) => (
+        <button
+          key={t.id}
+          onClick={() => onChange(t.id)}
+          className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${
+            mode === t.id ? "bg-primary text-slate-950" : "text-ink-dim hover:text-ink"
+          }`}
+        >
+          {t.label}
+        </button>
+      ))}
     </div>
   );
 }

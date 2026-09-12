@@ -1,6 +1,6 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "node tools/zivvvo/copy-images.mjs && npx --workspace=@zivvvo/web vite build && node tools/zivvvo/build-precache.mjs",
+  "buildCommand": "node ../tools/zivvvo/copy-images.mjs && vite build && node ../tools/zivvvo/build-precache.mjs",
   "outputDirectory": "apps/web/dist",
   "framework": null,
   "rewrites": [

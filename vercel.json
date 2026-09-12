@@ -1,6 +1,6 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "bash -c \"npm run copy:images && npm run build -w @zivvvo/web && npm run build:precache\"",
+  "buildCommand": "node tools/zivvvo/copy-images.mjs && npx --workspace=@zivvvo/web vite build && node tools/zivvvo/build-precache.mjs",
   "outputDirectory": "apps/web/dist",
   "framework": null,
   "rewrites": [

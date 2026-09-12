@@ -5,7 +5,6 @@ import { syncManager } from "./sync-supabase";
 import { OnboardingFlow } from "./OnboardingFlow";
 import { isSoundMuted, play, setSoundMuted } from "./sound";
 import { onAuthStateChange, signInWithGoogle } from "./auth";
-import { Button } from "./ui";
 import HomePage from "./pages/Home";
 import LearnPage from "./pages/Learn";
 import PracticePage from "./pages/Practice";
@@ -60,17 +59,23 @@ function SyncIndicator() {
 function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const handleSignIn = async () => {
+
+  const handleSignIn = () => {
+    console.log("[Zivvvo] Sign-in button clicked");
     setLoading(true);
     setError(null);
     try {
-      await signInWithGoogle();
+      signInWithGoogle();
+      // signInWithGoogle redirects — this line only runs if redirect fails
+      console.log("[Zivvvo] signInWithGoogle returned without redirect");
+      setLoading(false);
     } catch (e: any) {
       console.error("[Zivvvo] Login failed:", e);
       setError(e?.message ?? "Sign-in failed. Check console for details.");
       setLoading(false);
     }
   };
+
   return (
     <div className="app-shell items-center justify-center p-6">
       <div className="w-full max-w-sm space-y-6 text-center">
@@ -78,9 +83,13 @@ function LoginScreen() {
           <h1 className="text-3xl font-bold">Zivvvo</h1>
           <p className="mt-2 text-ink-dim">Adaptive road-rules practice for the ZVID provisional licence test.</p>
         </div>
-        <Button onClick={handleSignIn} disabled={loading}>
+        <button
+          onClick={handleSignIn}
+          disabled={loading}
+          className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:opacity-40"
+        >
           {loading ? "Redirecting…" : "Sign in with Google"}
-        </Button>
+        </button>
         {error && (
           <p className="text-sm text-bad bg-bad/10 rounded-xl px-4 py-2">{error}</p>
         )}

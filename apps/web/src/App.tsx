@@ -60,18 +60,15 @@ function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSignIn = () => {
-    console.log("[Zivvvo] Sign-in button clicked");
+  const handleSignIn = async () => {
+    console.log("[Zivvvo] Sign-in button clicked, URL:", import.meta.env.VITE_SUPABASE_URL ? "set" : "MISSING");
     setLoading(true);
     setError(null);
     try {
-      signInWithGoogle();
-      // signInWithGoogle redirects — this line only runs if redirect fails
-      console.log("[Zivvvo] signInWithGoogle returned without redirect");
-      setLoading(false);
+      await signInWithGoogle();
     } catch (e: any) {
       console.error("[Zivvvo] Login failed:", e);
-      setError(e?.message ?? "Sign-in failed. Check console for details.");
+      setError(e?.message ?? "Sign-in failed. Check console.");
       setLoading(false);
     }
   };

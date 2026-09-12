@@ -63,15 +63,19 @@ async function initAuth(): Promise<void> {
   }
 }
 
-export function signInWithGoogle(): void {
+export async function signInWithGoogle(): Promise<void> {
+  if (!url || !key) {
+    throw new Error("Supabase not configured — set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel env vars");
+  }
   const c = getClient();
   if (!c) {
-    throw new Error("Supabase not configured — check .env.local");
+    throw new Error("Supabase client failed to initialize");
   }
-  c.auth.signInWithOAuth({
+  const { error } = await c.auth.signInWithOAuth({
     provider: "google",
     options: { redirectTo: window.location.origin },
   });
+  if (error) throw error;
 }
 
 export async function signOut(): Promise<void> {

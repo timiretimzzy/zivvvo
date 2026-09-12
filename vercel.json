@@ -1,6 +1,6 @@
 {
   "installCommand": "npm install",
-  "buildCommand": "npm run copy:images && npm run build -w @zivvvo/web && npm run build:precache",
+  "buildCommand": "bash -c \"npm run copy:images && npm run build -w @zivvvo/web && npm run build:precache\"",
   "outputDirectory": "apps/web/dist",
   "framework": null,
   "rewrites": [

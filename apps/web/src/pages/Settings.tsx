@@ -39,12 +39,16 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
   if (!learner) return null;
 
   const handleSave = async () => {
+    const minutesChanged = dailyMinutes !== learner.dailyMinutes;
     await updateLearner(learner.id, {
       name: name.trim() || "Learner",
       examDate: parseDateInput(examDate),
       dailyMinutes,
       goal,
     });
+    if (minutesChanged) {
+      useApp.getState().advanceEngagement({ type: "set-goal", minutes: dailyMinutes });
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
   };

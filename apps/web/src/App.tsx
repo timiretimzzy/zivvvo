@@ -153,16 +153,17 @@ export default function App() {
     return onAuthStateChange((user) => {
       setAuthUser(user);
       setAuthChecked(true);
+      if (user) {
+        const state = useApp.getState();
+        if (!state.activeLearnerId) {
+          void state.init();
+        }
+      }
     });
   }, []);
 
   const openSettings = () => {
-    if (showSettings) {
-      setShowSettings(false);
-    } else {
-      setShowSettings(true);
-      setTab("home");
-    }
+    setShowSettings((prev) => !prev);
   };
 
   const toggleMute = () => {
@@ -182,6 +183,7 @@ export default function App() {
   }, [ready]);
 
   const handleSignOut = async () => {
+    if (!window.confirm("Sign out? Your local progress will be kept.")) return;
     await useApp.getState().signOut();
   };
 
@@ -233,7 +235,7 @@ export default function App() {
                 className="rounded-lg bg-surface-2 px-2 py-1 text-xs text-ink-dim hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 title="Sign out"
               >
-                ↗
+                ⏻
               </button>
             </div>
           </header>

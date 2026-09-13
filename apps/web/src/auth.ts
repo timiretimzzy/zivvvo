@@ -39,7 +39,7 @@ function getClient(): SupabaseClient | null {
   return supabase;
 }
 
-async function initAuth(): Promise<void> {
+export async function initAuth(): Promise<void> {
   if (initialized) return;
   initialized = true;
   const c = getClient();

@@ -60,7 +60,8 @@ function SessionRunner({ session }: { session: LearningSession }) {
   const topicLabel = question ? pack.topics.find((t) => t.id === question.topicId)?.label : null;
 
   const finish = () => {
-    const sessionAttempts = allAttempts.filter((a) => a.sessionId === session.id);
+    const currentAttempts = useApp.getState().attempts;
+    const sessionAttempts = currentAttempts.filter((a) => a.sessionId === session.id);
     const acc = sessionAttempts.length ? sessionAttempts.filter((a) => a.isCorrect).length / sessionAttempts.length : 0;
     const passed = isMock ? mockScore(sessionAttempts, ZVID_MOCK_DEFAULT).passed : acc >= 0.75;
     if (passed) {

@@ -20,7 +20,7 @@ import {
 } from "@zivvvo/learning-engine";
 import { db, loadLearnerData, persistAttempt, persistEngagement, persistReview, persistSession, type StoredLearner } from "./db";
 import { syncManager, pushLearnerState, restoreFromCloud } from "./sync-supabase";
-import { getSupabaseUserId, isAuthenticated, signOut as authSignOut } from "./auth";
+import { initAuth, getSupabaseUserId, isAuthenticated, signOut as authSignOut } from "./auth";
 import { DEMO_LEARNERS, demoEngagement, demoLearnerRecord, sealedAttemptsFor } from "./seed";
 import { pack } from "./catalog";
 import type { ConfidenceBand, GoalId } from "./onboarding";
@@ -94,6 +94,8 @@ export const useApp = create<AppStore>((set, get) => ({
   tab: "home",
 
   init: async () => {
+    try {
+    await initAuth();
     const learners = await db.learners.toArray();
     const meta = await db.meta.get("activeLearner");
     const activeLearnerId = (meta?.value as string | undefined) ?? null;
@@ -142,6 +144,10 @@ export const useApp = create<AppStore>((set, get) => ({
       }
     } else {
       set({ ready: true, learners, activeLearnerId });
+    }
+    } catch (err) {
+      console.error("[Zivvvo] init() failed, falling back to onboarding:", err);
+      set({ ready: true, learners: [], activeLearnerId: null });
     }
   },
 
@@ -243,7 +249,18 @@ export const useApp = create<AppStore>((set, get) => ({
     if (!learnerId) return;
     const completed = { ...s, completedAt: Date.now() };
     await persistSession(completed);
-    set({ activeSession: null });
+    set((state) => ({
+      activeSession: null,
+      sessions: state.sessions.map((sess) => (sess.id === completed.id ? completed : sess)),
+    }));
+
+    // Mark diagnostic as completed when a diagnostic session finishes
+    if (s.type === "diagnostic") {
+      const learner = get().learners.find((l) => l.id === learnerId);
+      if (learner && !learner.diagnosticCompleted) {
+        await get().updateLearner(learnerId, { diagnosticCompleted: true });
+      }
+    }
 
     const now = Date.now();
     const day = dayOfEpoch(now);

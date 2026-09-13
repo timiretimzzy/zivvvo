@@ -42,30 +42,30 @@ function getClient(): SupabaseClient | null {
 async function initAuth(): Promise<void> {
   if (initialized) return;
   initialized = true;
-  const meta = await db.meta.get("supabaseUser");
-  if (meta?.value) {
-    cachedUser = meta.value as User;
-    const c = getClient();
-    if (c) {
-      const { data } = await c.auth.getSession();
-      const freshUser = data.session?.user ?? null;
-      if (freshUser?.id !== cachedUser?.id) {
-        cachedUser = freshUser;
-        await db.meta.put({
-          key: "supabaseUser",
-          value: freshUser
-            ? { id: freshUser.id, email: freshUser.email, user_metadata: freshUser.user_metadata }
-            : null,
-        });
-        for (const cb of listeners) cb(freshUser);
-      }
+  const c = getClient();
+  if (c) {
+    const { data } = await c.auth.getSession();
+    const sessionUser = data.session?.user ?? null;
+    const meta = await db.meta.get("supabaseUser");
+    const cachedUserFromDb = meta?.value as User | null;
+    if (sessionUser?.id !== cachedUserFromDb?.id) {
+      cachedUser = sessionUser;
+      await db.meta.put({
+        key: "supabaseUser",
+        value: sessionUser
+          ? { id: sessionUser.id, email: sessionUser.email, user_metadata: sessionUser.user_metadata }
+          : null,
+      });
+      for (const cb of listeners) cb(sessionUser);
+    } else if (cachedUserFromDb) {
+      cachedUser = cachedUserFromDb;
     }
   }
 }
 
 export async function signInWithGoogle(): Promise<void> {
   if (!url || !key) {
-    throw new Error("Supabase not configured — set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel env vars");
+    throw new Error("Supabase not configured — check environment variables");
   }
   const c = getClient();
   if (!c) {
@@ -106,6 +106,7 @@ export async function getCurrentUser(): Promise<User | null> {
 export function onAuthStateChange(callback: AuthChangeCallback): () => void {
   listeners.add(callback);
   callback(cachedUser);
+  getClient();
   void initAuth();
   return () => { listeners.delete(callback); };
 }

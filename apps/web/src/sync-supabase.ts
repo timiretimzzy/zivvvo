@@ -1,17 +1,11 @@
 import type { AttemptRow, SyncBackend } from "./sync";
-import { SyncManager, getDeviceId, rowToAttempt } from "./sync";
+import { SyncManager, rowToAttempt } from "./sync";
 import type { AttemptEvent } from "@zivvvo/assessment-engine";
-import { db } from "./db";
+import { db, type StoredLearner } from "./db";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { ReviewState } from "@zivvvo/learning-engine";
+import type { EngagementState } from "@zivvvo/learning-engine";
 
-/**
- * Real sync backend for the live Supabase project. The client is loaded lazily
- * (dynamic import) so the main PWA bundle stays offline-first: supabase-js is
- * only fetched after a sync-worthy change when the env is configured. When
- * VITE_SUPABASE_* are absent, the backend reports `configured: false` and the
- * app stays local-only. It targets the isolated `zivvvo` schema (migration
- * 001) and sends `x-device-id` so the RLS gate can scope rows to this device.
- */
 let clientPromise: Promise<SupabaseClient<any, any, any> | null> | null = null;
 
 async function getClient(): Promise<SupabaseClient | null> {
@@ -25,7 +19,7 @@ async function getClient(): Promise<SupabaseClient | null> {
   clientPromise = import("@supabase/supabase-js").then(({ createClient }) =>
     createClient(url, key, {
       db: { schema: "zivvvo" },
-      global: { headers: { "x-device-id": getDeviceId() } },
+      auth: { persistSession: true, autoRefreshToken: true },
     }),
   );
   return clientPromise;
@@ -43,22 +37,116 @@ export class SupabaseSyncBackend implements SyncBackend {
   async push(rows: AttemptRow[]): Promise<void> {
     const c = await getClient();
     if (!c) throw new Error("Supabase not configured");
-    const { error } = await c.from("attempts").upsert(rows, { onConflict: "attempt_id" });
+    const { data: { user } } = await c.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+    const userIdRows = rows.map(r => ({ ...r, user_id: user.id }));
+    const { error } = await c.from("attempts").upsert(userIdRows, { onConflict: "attempt_id" });
     if (error) throw new Error(error.message);
   }
 
-  async pull(deviceId: string): Promise<AttemptRow[]> {
+  async pull(_deviceId: string): Promise<AttemptRow[]> {
     const c = await getClient();
     if (!c) throw new Error("Supabase not configured");
+    const { data: { user } } = await c.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
     const { data, error } = await c
       .from("attempts")
       .select("*")
-      .eq("device_id", deviceId)
+      .eq("user_id", user.id)
       .order("ts", { ascending: true });
     if (error) throw new Error(error.message);
     return (data ?? []) as AttemptRow[];
   }
 }
+
+// ─── Full state sync (learner profile + reviews + engagement) ────────────────────
+
+export interface LearnerStateRow {
+  user_id: string;
+  learner_id: string;
+  display_name: string | null;
+  goal: string | null;
+  exam_date: number | null;
+  daily_minutes: number | null;
+  initial_confidence: string | null;
+  diagnostic_completed: boolean;
+  created_at: number | null;
+  reviews: ReviewState[];
+  engagement: EngagementState | null;
+  updated_at: number | null;
+}
+
+export async function pushLearnerState(
+  learner: StoredLearner,
+  reviews: ReviewState[],
+  engagement: EngagementState,
+): Promise<void> {
+  const c = await getClient();
+  if (!c) return;
+  const { data: { user } } = await c.auth.getUser();
+  if (!user) return;
+
+  const row: LearnerStateRow = {
+    user_id: user.id,
+    learner_id: learner.id,
+    display_name: learner.name,
+    goal: learner.goal ?? null,
+    exam_date: learner.examDate ?? null,
+    daily_minutes: learner.dailyMinutes ?? null,
+    initial_confidence: learner.initialConfidence ?? null,
+    diagnostic_completed: learner.diagnosticCompleted,
+    created_at: learner.createdAt,
+    reviews,
+    engagement,
+    updated_at: Date.now(),
+  };
+
+  const { error } = await c.from("learner_state").upsert(row, { onConflict: "user_id" });
+  if (error) console.error("[Zivvvo] pushLearnerState error:", error.message);
+}
+
+export async function pullLearnerState(): Promise<LearnerStateRow | null> {
+  const c = await getClient();
+  if (!c) return null;
+  const { data: { user } } = await c.auth.getUser();
+  if (!user) return null;
+
+  const { data, error } = await c
+    .from("learner_state")
+    .select("*")
+    .eq("user_id", user.id)
+    .single();
+  if (error || !data) return null;
+  return data as LearnerStateRow;
+}
+
+export async function restoreFromCloud(): Promise<{
+  learner: StoredLearner | null;
+  reviews: ReviewState[];
+  engagement: EngagementState | null;
+} | null> {
+  const state = await pullLearnerState();
+  if (!state) return null;
+
+  const learner: StoredLearner = {
+    id: state.learner_id,
+    name: state.display_name ?? "Learner",
+    diagnosticCompleted: state.diagnostic_completed ?? false,
+    createdAt: state.created_at ?? Date.now(),
+    goal: state.goal as StoredLearner["goal"],
+    examDate: state.exam_date ?? undefined,
+    dailyMinutes: state.daily_minutes ?? undefined,
+    initialConfidence: state.initial_confidence as StoredLearner["initialConfidence"],
+  };
+
+  return {
+    learner,
+    reviews: (state.reviews as ReviewState[]) ?? [],
+    engagement: (state.engagement as EngagementState) ?? null,
+  };
+}
+
+// ─── Wired singleton ────────────────────────────────────────────────────────────
 
 const dexieHost = {
   async readPending() {
@@ -69,7 +157,6 @@ const dexieHost = {
       for (const id of ids) await db.attempts.update(id, { syncedAt: at });
     });
   },
-  /** Insert server rows this device has never seen; local rows always win. */
   async mergeRemote(rows: AttemptRow[]): Promise<AttemptEvent[]> {
     if (rows.length === 0) return [];
     const ids = rows.map((r) => r.attempt_id);

@@ -19,8 +19,8 @@ import {
   type ReviewState,
 } from "@zivvvo/learning-engine";
 import { db, loadLearnerData, persistAttempt, persistEngagement, persistReview, persistSession, type StoredLearner } from "./db";
-import { syncManager } from "./sync-supabase";
-import { getSupabaseUserId, signOut as authSignOut } from "./auth";
+import { syncManager, pushLearnerState, restoreFromCloud } from "./sync-supabase";
+import { getSupabaseUserId, isAuthenticated, signOut as authSignOut } from "./auth";
 import { DEMO_LEARNERS, demoEngagement, demoLearnerRecord, sealedAttemptsFor } from "./seed";
 import { pack } from "./catalog";
 import type { ConfidenceBand, GoalId } from "./onboarding";
@@ -73,6 +73,15 @@ const MODE_BY_TYPE: Record<LearningSession["type"], LearningMode> = {
   "mistake-review": "review",
 };
 
+/** Push full learner state to Supabase cloud (fire-and-forget). */
+function pushToCloud() {
+  const { activeLearnerId, learners, reviews, engagement } = useApp.getState();
+  if (!activeLearnerId || !isAuthenticated()) return;
+  const learner = learners.find((l) => l.id === activeLearnerId);
+  if (!learner) return;
+  void pushLearnerState(learner, reviews, engagement);
+}
+
 export const useApp = create<AppStore>((set, get) => ({
   ready: false,
   learners: [],
@@ -88,6 +97,33 @@ export const useApp = create<AppStore>((set, get) => ({
     const learners = await db.learners.toArray();
     const meta = await db.meta.get("activeLearner");
     const activeLearnerId = (meta?.value as string | undefined) ?? null;
+
+    // If logged in and no local learner, try to restore from cloud
+    if (isAuthenticated() && learners.length === 0) {
+      const cloud = await restoreFromCloud();
+      if (cloud?.learner) {
+        const learner = cloud.learner;
+        const supabaseUserId = getSupabaseUserId();
+        if (supabaseUserId) learner.supabaseUserId = supabaseUserId;
+        await db.learners.put(learner);
+        if (cloud.reviews.length > 0) {
+          await db.reviews.bulkPut(cloud.reviews.map(r => ({
+            ...r,
+            id: `${r.learnerId}:${r.qid}`,
+          })));
+        }
+        if (cloud.engagement) {
+          await db.engagements.put({ id: learner.id, ...cloud.engagement });
+        }
+        await db.meta.put({ key: "activeLearner", value: learner.id });
+        const data = await loadLearnerData(learner.id);
+        const engagement = data.engagement ?? initialEngagementState(learner.dailyMinutes);
+        set({ ready: true, learners: [learner], activeLearnerId: learner.id, ...data, engagement, tab: "home" });
+        void syncManager.sync();
+        return;
+      }
+    }
+
     if (activeLearnerId && learners.some((l) => l.id === activeLearnerId)) {
       const data = await loadLearnerData(activeLearnerId);
       const learner = learners.find((l) => l.id === activeLearnerId);
@@ -147,6 +183,7 @@ export const useApp = create<AppStore>((set, get) => ({
     await persistEngagement(id, initialEngagementState(dailyMinutes));
     set((s) => ({ learners: [...s.learners, learner], activeLearnerId: id }));
     await get().pickLearner(id);
+    pushToCloud();
     return id;
   },
 
@@ -223,6 +260,7 @@ export const useApp = create<AppStore>((set, get) => ({
       dailyGoalRewardedDay = day;
       get().advanceEngagement({ type: "daily-goal", day });
     }
+    pushToCloud();
     void syncManager.sync();
   },
 
@@ -233,6 +271,7 @@ export const useApp = create<AppStore>((set, get) => ({
   updateLearner: async (id, patch) => {
     await db.learners.update(id, patch);
     set((s) => ({ learners: s.learners.map((l) => (l.id === id ? { ...l, ...patch } : l)) }));
+    pushToCloud();
   },
 
   advanceEngagement: (event) => {
@@ -241,6 +280,7 @@ export const useApp = create<AppStore>((set, get) => ({
     const next = reduceEngagement(get().engagement, event, defaultConfig);
     void persistEngagement(learnerId, next);
     set({ engagement: next });
+    pushToCloud();
   },
 
   resetDemo: async () => {

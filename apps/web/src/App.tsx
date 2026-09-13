@@ -74,23 +74,57 @@ function LoginScreen() {
   };
 
   return (
-    <div className="app-shell items-center justify-center p-6">
-      <div className="w-full max-w-sm space-y-6 text-center">
-        <div>
-          <h1 className="text-3xl font-bold">Zivvvo</h1>
-          <p className="mt-2 text-ink-dim">Adaptive road-rules practice for the ZVID provisional licence test.</p>
+    <div className="app-shell overflow-y-auto">
+      <div className="mx-auto max-w-lg space-y-8 px-6 py-10 text-center">
+        <div className="flex justify-center">
+          <img src="/icons/icon-192.png" alt="Zivvvo" className="h-20 w-20 rounded-2xl" />
         </div>
+        <div>
+          <h1 className="text-4xl font-bold">Zivvvo</h1>
+          <p className="mt-3 text-lg text-ink-dim">
+            Pass your Zimbabwe VID Class 2 provisional licence test with confidence.
+          </p>
+        </div>
+
+        <div className="space-y-4 text-left">
+          <div className="rounded-xl bg-surface-2 p-4">
+            <h3 className="font-semibold">1,200+ Exam Questions</h3>
+            <p className="mt-1 text-sm text-ink-dim">Covering all road signs, rules, and vehicle controls for the ZVID test.</p>
+          </div>
+          <div className="rounded-xl bg-surface-2 p-4">
+            <h3 className="font-semibold">AI-Powered Explanations</h3>
+            <p className="mt-1 text-sm text-ink-dim">Every answered question includes a clear explanation of the correct answer.</p>
+          </div>
+          <div className="rounded-xl bg-surface-2 p-4">
+            <h3 className="font-semibold">Works Offline</h3>
+            <p className="mt-1 text-sm text-ink-dim">Study anywhere — no internet needed. Your progress syncs when you're back online.</p>
+          </div>
+          <div className="rounded-xl bg-surface-2 p-4">
+            <h3 className="font-semibold">Smart Study Plans</h3>
+            <p className="mt-1 text-sm text-ink-dim">Adaptive practice targets your weak topics and tracks your exam readiness.</p>
+          </div>
+        </div>
+
         <button
           onClick={handleSignIn}
           disabled={loading}
-          className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:opacity-40"
+          className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110 active:scale-[0.98] disabled:opacity-40"
         >
           {loading ? "Redirecting…" : "Sign in with Google"}
         </button>
         {error && (
-          <p className="text-sm text-bad bg-bad/10 rounded-xl px-4 py-2">{error}</p>
+          <p className="rounded-xl bg-bad/10 px-4 py-2 text-sm text-bad">{error}</p>
         )}
-        <p className="text-xs text-ink-dim">Sign in to sync your progress across devices.</p>
+
+        <p className="text-xs text-ink-dim">
+          Sign in to sync your progress across devices.
+        </p>
+
+        <footer className="border-t border-line pt-4 text-xs text-ink-dim">
+          <a href="/privacy.html" className="underline hover:text-ink">Privacy Policy</a>
+          {" · "}
+          <a href="https://github.com/timiretimzzy/zivvvo" className="underline hover:text-ink" target="_blank" rel="noopener noreferrer">GitHub</a>
+        </footer>
       </div>
     </div>
   );

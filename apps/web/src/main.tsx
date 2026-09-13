@@ -11,7 +11,7 @@ createRoot(document.getElementById("root")!).render(
   </React.StrictMode>,
 );
 
-/* Hide splash after 1.5 seconds (industry standard) */
+/* Hide splash after 0.8 seconds with 0.3s fade */
 const hideSplash = () => {
   const splash = document.getElementById("splash");
   if (splash) {
@@ -21,7 +21,7 @@ const hideSplash = () => {
   }
 };
 const elapsed = Date.now() - ((window as any).__splashStart ?? 0);
-const remaining = Math.max(0, 1500 - elapsed);
+const remaining = Math.max(0, 800 - elapsed);
 setTimeout(hideSplash, remaining + 50);
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {

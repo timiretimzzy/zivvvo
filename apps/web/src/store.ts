@@ -93,6 +93,17 @@ export const useApp = create<AppStore>((set, get) => ({
       const learner = learners.find((l) => l.id === activeLearnerId);
       const engagement = data.engagement ?? initialEngagementState(learner?.dailyMinutes);
       set({ ready: true, learners, activeLearnerId, ...data, engagement, tab: "home" });
+    } else if (!activeLearnerId) {
+      const supabaseUserId = getSupabaseUserId();
+      const matched = supabaseUserId
+        ? learners.find((l) => l.supabaseUserId === supabaseUserId)
+        : undefined;
+      if (matched) {
+        await get().pickLearner(matched.id);
+        set({ ready: true, learners });
+      } else {
+        set({ ready: true, learners, activeLearnerId });
+      }
     } else {
       set({ ready: true, learners, activeLearnerId });
     }
@@ -252,11 +263,9 @@ export const useApp = create<AppStore>((set, get) => ({
   signOut: async () => {
     dailyGoalRewardedDay = -1;
     await authSignOut();
-    await db.delete();
-    await db.open();
     set({
       ready: true,
-      learners: [],
+      learners: get().learners,
       activeLearnerId: null,
       attempts: [],
       reviews: [],

@@ -41,13 +41,16 @@
       <p style="text-align:center;margin-top:1.5rem;color:#9ca3af">This app requires JavaScript to run. Please enable JavaScript in your browser.</p>
       <p style="text-align:center;margin-top:1rem"><a href="/privacy.html">Privacy Policy</a> · <a href="https://github.com/timiretimzzy/zivvvo">GitHub</a></p>
     </noscript>
-    <div id="root">
-      <div id="splash" style="display:flex;align-items:center;justify-content:center;height:100vh;width:100vw;background:#0f172a;position:fixed;top:0;left:0;z-index:9999">
-        <img src="/splash.png" alt="Zivvvo" style="max-width:80vw;max-height:60vh;object-fit:contain;animation:splashFadeIn 0.4s ease-out" />
-      </div>
+    <div id="splash" style="display:flex;align-items:center;justify-content:center;height:100vh;width:100vw;background:#0f172a;position:fixed;top:0;left:0;z-index:9999">
+      <img src="/splash.png" alt="Zivvvo" style="max-width:80vw;max-height:60vh;object-fit:contain;animation:splashFadeIn 0.4s ease-out" />
     </div>
+    <div id="root"></div>
     <script>
-      window.__splashStart = Date.now();
+      /* Force-remove splash after 4s max — covers slow connections + JS errors */
+      setTimeout(function() {
+        var s = document.getElementById('splash');
+        if (s) { s.style.transition = 'opacity 0.3s'; s.style.opacity = '0'; setTimeout(function() { s.remove(); }, 300); }
+      }, 4000);
     </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>

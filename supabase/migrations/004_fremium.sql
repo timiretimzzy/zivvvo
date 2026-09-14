@@ -6,10 +6,10 @@ ALTER TABLE zivvvo.learner_state
   ADD COLUMN IF NOT EXISTS plan text NOT NULL DEFAULT 'free',
   ADD COLUMN IF NOT EXISTS plan_expires_at timestamptz;
 
--- Payment tracking table
+-- Payment tracking table (user_id is text to match existing tables)
 CREATE TABLE IF NOT EXISTS zivvvo.payments (
   reference text PRIMARY KEY,
-  user_id text NOT NULL REFERENCES auth.users(id),
+  user_id text NOT NULL,
   plan text NOT NULL,
   amount decimal NOT NULL,
   currency text NOT NULL DEFAULT 'USD',

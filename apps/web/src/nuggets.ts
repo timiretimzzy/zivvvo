@@ -1,11 +1,13 @@
-import type { ContentPack } from "@zivvvo/content";
+import rawNuggets from "./data/nuggets.json";
+import { pack } from "./catalog";
 
 export interface Nugget {
-  qid: string;
+  id: string;
   topicId: string;
   topicLabel: string;
-  stem: string;
-  explanation: string;
+  title: string;
+  text: string;
+  imageRef: string | null;
 }
 
 export interface TopicNuggets {
@@ -16,6 +18,13 @@ export interface TopicNuggets {
 }
 
 const READ_KEY = "zivvvo_read_nuggets";
+
+const topicLabelMap = new Map(pack.topics.map((t) => [t.id, t.label]));
+
+const allNuggets: Nugget[] = (rawNuggets as Array<Omit<Nugget, "topicLabel">>).map((n) => ({
+  ...n,
+  topicLabel: topicLabelMap.get(n.topicId) ?? n.topicId,
+}));
 
 export function getReadNuggets(): Set<string> {
   try {
@@ -45,28 +54,19 @@ export function toggleNuggetRead(qid: string): Set<string> {
   return s;
 }
 
-export function nuggetsByTopic(pack: ContentPack): TopicNuggets[] {
+export function nuggetsByTopic(): TopicNuggets[] {
   const readSet = getReadNuggets();
   const byTopic = new Map<string, Nugget[]>();
-  for (const q of pack.questions) {
-    if (!q.explanation || q.explanation.length === 0) continue;
-    const topic = pack.topics.find((t) => t.id === q.topicId);
-    const label = topic?.label ?? q.topicId;
-    if (!byTopic.has(q.topicId)) byTopic.set(q.topicId, []);
-    byTopic.get(q.topicId)!.push({
-      qid: q.qid,
-      topicId: q.topicId,
-      topicLabel: label,
-      stem: q.stem,
-      explanation: q.explanation,
-    });
+  for (const n of allNuggets) {
+    if (!byTopic.has(n.topicId)) byTopic.set(n.topicId, []);
+    byTopic.get(n.topicId)!.push(n);
   }
   return [...byTopic.entries()]
     .map(([topicId, nuggets]) => ({
       topicId,
       topicLabel: nuggets[0]?.topicLabel ?? topicId,
       nuggets,
-      readCount: nuggets.filter((n) => readSet.has(n.qid)).length,
+      readCount: nuggets.filter((n) => readSet.has(n.id)).length,
     }))
     .sort((a, b) => b.nuggets.length - a.nuggets.length);
 }

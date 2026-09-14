@@ -20,7 +20,7 @@ import {
   type ReviewState,
 } from "@zivvvo/learning-engine";
 import { db, loadLearnerData, persistAttempt, persistEngagement, persistReview, persistSession, type StoredLearner } from "./db";
-import { syncManager, pushLearnerState, restoreFromCloud, clearCloudData } from "./sync-supabase";
+import { syncManager, pushLearnerState, restoreFromCloud, clearCloudData, fetchPlanStatus } from "./sync-supabase";
 import { initAuth, getSupabaseUserId, isAuthenticated, signOut as authSignOut } from "./auth";
 import { isSoundMuted, play as playSound } from "./sound";
 import { DEMO_LEARNERS, demoEngagement, demoLearnerRecord, sealedAttemptsFor } from "./seed";
@@ -56,7 +56,7 @@ export interface AppStore {
     dailyMinutes: number;
     initialConfidence: ConfidenceBand;
   }) => Promise<string>;
-  startSession: (s: LearningSession) => Promise<void>;
+  startSession: (s: LearningSession) => Promise<boolean>;
   recordAnswer: (q: Question, selected: number[], confidence: Confidence, durationMs: number) => Promise<AttemptEvent>;
 completeSession: () => Promise<void>;
   abandonSession: () => void;
@@ -165,6 +165,15 @@ export const useApp = create<AppStore>((set, get) => ({
       const learner = learners.find((l) => l.id === activeLearnerId);
       const engagement = data.engagement ?? initialEngagementState(learner?.dailyMinutes);
       set({ ready: true, currentSupabaseUserId: supabaseUserId ?? null, learners, activeLearnerId, ...data, engagement, tab: "home", plan: learner?.plan ?? "free", planExpiresAt: learner?.planExpiresAt });
+      // Sync plan from server in case it was updated (e.g. payment, admin whitelist)
+      if (isAuthenticated()) {
+        fetchPlanStatus().then((ps) => {
+          if (ps && ps.plan !== get().plan) {
+            set({ plan: ps.plan, planExpiresAt: ps.planExpiresAt });
+            void get().updateLearner(activeLearnerId, { plan: ps.plan, planExpiresAt: ps.planExpiresAt });
+          }
+        }).catch(() => {});
+      }
     } else if (!activeLearnerId) {
       const matched = supabaseUserId
         ? learners.find((l) => l.supabaseUserId === supabaseUserId)
@@ -240,6 +249,13 @@ export const useApp = create<AppStore>((set, get) => ({
   },
 
   startSession: async (s: LearningSession) => {
+    // Enforce session limits for free users
+    const { plan } = get();
+    if (plan === "free") {
+      const counts = get().sessionsToday();
+      if (s.type === "diagnostic" && counts.diagnostic >= 1) return false;
+      if (s.type !== "diagnostic" && counts.other >= 1) return false;
+    }
     await persistSession(s);
     set((state) => ({
       activeSession: s,
@@ -247,6 +263,7 @@ export const useApp = create<AppStore>((set, get) => ({
         ? state.sessions
         : [...state.sessions, s],
     }));
+    return true;
   },
 
   recordAnswer: async (q: Question, selected: number[], confidence: Confidence, durationMs: number) => {

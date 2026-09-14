@@ -38,7 +38,11 @@ export default function HomePage() {
   const engagement = useApp((s) => s.engagement);
   const startSession = useApp((s) => s.startSession);
   const updateLearner = useApp((s) => s.updateLearner);
+  const canStartSession = useApp((s) => s.canStartSession);
+  const userPlan = useApp((s) => s.plan);
+  const setTab = useApp((s) => s.setTab);
   const learner = useApp((s) => s.learners.find((l) => l.id === s.activeLearnerId));
+  const [paywall, setPaywall] = useState(false);
 
   const [dateInput, setDateInput] = useState(() => {
     if (!learner?.examDate) return "";
@@ -95,6 +99,7 @@ export default function HomePage() {
 
   const startActivity = () => {
     if (!activity || !learnerId) return;
+    if (!canStartSession(activity.sessionType)) { setPaywall(true); return; }
     play("start");
     vibrate(20);
     const r = sessionFor(activity, attempts, learnerId);
@@ -102,7 +107,8 @@ export default function HomePage() {
   };
 
   const startPlanDay = () => {
-    if (!cursor || !plan || !learnerId) return;
+    if (!cursor || !userPlan || !learnerId) return;
+    if (!canStartSession("smart")) { setPaywall(true); return; }
     play("start");
     vibrate(20);
     const r = planDaySession(cursor.day, attempts, reviews, learnerId);
@@ -111,6 +117,7 @@ export default function HomePage() {
 
   const timePick = (minutes?: number) => {
     if (!learnerId) return;
+    if (!canStartSession("quick")) { setPaywall(true); return; }
     if (minutes) {
       const r = quickSession(attempts, learnerId, minutes);
       void startSession(r.session);
@@ -270,6 +277,21 @@ export default function HomePage() {
       {sessions.length === 0 && (
         <div className="rounded-2xl border border-dashed border-line p-4 text-center text-xs text-ink-dim">
           Finish a session and this dashboard starts tracking XP, streaks and your plan.
+        </div>
+      )}
+
+      {paywall && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={() => setPaywall(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-surface p-6 text-center" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold">Free sessions used today</h2>
+            <p className="mt-2 text-sm text-ink-dim">
+              You've used your 2 free sessions today. Upgrade for unlimited practice.
+            </p>
+            <div className="mt-5 flex gap-3">
+              <Button variant="ghost" onClick={() => setPaywall(false)}>Dismiss</Button>
+              <Button onClick={() => { setPaywall(false); setTab("pricing"); }}>See Plans</Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

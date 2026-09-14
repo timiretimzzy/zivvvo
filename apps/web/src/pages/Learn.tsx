@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useApp } from "../store";
 import { learnerState, smartTopicSession } from "../engine";
 import { learnPath } from "../learnPath";
@@ -10,6 +10,9 @@ export default function LearnPage() {
   const activeLearnerId = useApp((s) => s.activeLearnerId);
   const learner = useApp((s) => s.learners.find((l) => l.id === activeLearnerId));
   const startSession = useApp((s) => s.startSession);
+  const canStartSession = useApp((s) => s.canStartSession);
+  const setTab = useApp((s) => s.setTab);
+  const [paywall, setPaywall] = useState(false);
 
   const state = useMemo(
     () =>
@@ -26,6 +29,7 @@ export default function LearnPage() {
   const path = useMemo(() => learnPath(state), [state]);
 
   const practice = (topicId: string) => {
+    if (!canStartSession("smart")) { setPaywall(true); return; }
     const r = smartTopicSession(topicId, attempts, activeLearnerId ?? "");
     void startSession(r.session);
   };
@@ -70,6 +74,21 @@ export default function LearnPage() {
           </Card>
         );
       })}
+
+      {paywall && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={() => setPaywall(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-surface p-6 text-center" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-lg font-bold">Free sessions used today</h2>
+            <p className="mt-2 text-sm text-ink-dim">
+              You've used your 2 free sessions today. Upgrade for unlimited practice.
+            </p>
+            <div className="mt-5 flex gap-3">
+              <Button variant="ghost" onClick={() => setPaywall(false)}>Dismiss</Button>
+              <Button onClick={() => { setPaywall(false); setTab("pricing"); }}>See Plans</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

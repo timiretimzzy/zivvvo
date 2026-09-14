@@ -36,6 +36,7 @@ if (!PAYNOW_ID || !PAYNOW_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
   auth: { persistSession: false },
+  db: { schema: "zivvvo" },
   realtime: { transport: ws },
 });
 

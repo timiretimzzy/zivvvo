@@ -155,8 +155,8 @@ export default function App() {
       setAuthChecked(true);
       if (user) {
         const state = useApp.getState();
-        if (!state.activeLearnerId) {
-          void state.init();
+        if (!state.activeLearnerId || state.currentSupabaseUserId !== user.id) {
+          void state.init(user.id);
         }
       }
     });

@@ -32,6 +32,8 @@ let dailyGoalRewardedDay = -1;
 
 export interface AppStore {
   ready: boolean;
+  /** Tracks the Supabase user for the current session so we can detect user switches. */
+  currentSupabaseUserId: string | null;
   learners: StoredLearner[];
   activeLearnerId: string | null;
   attempts: AttemptEvent[];
@@ -40,7 +42,7 @@ export interface AppStore {
   engagement: EngagementState;
   activeSession: LearningSession | null;
   tab: Tab;
-  init: () => Promise<void>;
+  init: (authUserId?: string) => Promise<void>;
   pickLearner: (id: string) => Promise<void>;
   seedDemos: () => Promise<void>;
   completeOnboarding: (input: {
@@ -84,6 +86,7 @@ function pushToCloud() {
 
 export const useApp = create<AppStore>((set, get) => ({
   ready: false,
+  currentSupabaseUserId: null,
   learners: [],
   activeLearnerId: null,
   attempts: [],
@@ -93,9 +96,24 @@ export const useApp = create<AppStore>((set, get) => ({
   activeSession: null,
   tab: "home",
 
-  init: async () => {
+  init: async (authUserId?: string) => {
     try {
     await initAuth();
+    const supabaseUserId = authUserId ?? getSupabaseUserId();
+    const previousUserId = get().currentSupabaseUserId;
+    const userSwitched = supabaseUserId && previousUserId && supabaseUserId !== previousUserId;
+
+    // If a different user signed in, clear the old user's data from IndexedDB
+    if (userSwitched) {
+      console.log("[Zivvvo] User switch detected, clearing old data");
+      await db.learners.clear();
+      await db.attempts.clear();
+      await db.reviews.clear();
+      await db.sessions.clear();
+      await db.engagements.clear();
+      await db.meta.put({ key: "activeLearner", value: null });
+    }
+
     const learners = await db.learners.toArray();
     const meta = await db.meta.get("activeLearner");
     const activeLearnerId = (meta?.value as string | undefined) ?? null;
@@ -105,7 +123,6 @@ export const useApp = create<AppStore>((set, get) => ({
       const cloud = await restoreFromCloud();
       if (cloud?.learner) {
         const learner = cloud.learner;
-        const supabaseUserId = getSupabaseUserId();
         if (supabaseUserId) learner.supabaseUserId = supabaseUserId;
         await db.learners.put(learner);
         if (cloud.reviews.length > 0) {
@@ -120,7 +137,7 @@ export const useApp = create<AppStore>((set, get) => ({
         await db.meta.put({ key: "activeLearner", value: learner.id });
         const data = await loadLearnerData(learner.id);
         const engagement = data.engagement ?? initialEngagementState(learner.dailyMinutes);
-        set({ ready: true, learners: [learner], activeLearnerId: learner.id, ...data, engagement, tab: "home" });
+        set({ ready: true, currentSupabaseUserId: supabaseUserId ?? null, learners: [learner], activeLearnerId: learner.id, ...data, engagement, tab: "home" });
         void syncManager.sync();
         return;
       }
@@ -130,24 +147,23 @@ export const useApp = create<AppStore>((set, get) => ({
       const data = await loadLearnerData(activeLearnerId);
       const learner = learners.find((l) => l.id === activeLearnerId);
       const engagement = data.engagement ?? initialEngagementState(learner?.dailyMinutes);
-      set({ ready: true, learners, activeLearnerId, ...data, engagement, tab: "home" });
+      set({ ready: true, currentSupabaseUserId: supabaseUserId ?? null, learners, activeLearnerId, ...data, engagement, tab: "home" });
     } else if (!activeLearnerId) {
-      const supabaseUserId = getSupabaseUserId();
       const matched = supabaseUserId
         ? learners.find((l) => l.supabaseUserId === supabaseUserId)
         : undefined;
       if (matched) {
         await get().pickLearner(matched.id);
-        set({ ready: true, learners });
+        set({ ready: true, currentSupabaseUserId: supabaseUserId ?? null, learners });
       } else {
-        set({ ready: true, learners, activeLearnerId });
+        set({ ready: true, currentSupabaseUserId: supabaseUserId ?? null, learners, activeLearnerId });
       }
     } else {
-      set({ ready: true, learners, activeLearnerId });
+      set({ ready: true, currentSupabaseUserId: supabaseUserId ?? null, learners, activeLearnerId });
     }
     } catch (err) {
       console.error("[Zivvvo] init() failed, falling back to onboarding:", err);
-      set({ ready: true, learners: [], activeLearnerId: null });
+      set({ ready: true, currentSupabaseUserId: null, learners: [], activeLearnerId: null });
     }
   },
 
@@ -320,9 +336,16 @@ export const useApp = create<AppStore>((set, get) => ({
   signOut: async () => {
     dailyGoalRewardedDay = -1;
     await authSignOut();
+    await db.learners.clear();
+    await db.attempts.clear();
+    await db.reviews.clear();
+    await db.sessions.clear();
+    await db.engagements.clear();
+    await db.meta.put({ key: "activeLearner", value: null });
     set({
       ready: true,
-      learners: get().learners,
+      currentSupabaseUserId: null,
+      learners: [],
       activeLearnerId: null,
       attempts: [],
       reviews: [],

@@ -26,7 +26,7 @@ function minutesToday(sessions: { completedAt: number | null; createdAt: number;
   const now = Date.now();
   const start = now - (now % DAY_MS);
   return sessions
-    .filter((r) => r.completedAt && r.createdAt >= start)
+    .filter((r) => r.completedAt && (r.completedAt >= start))
     .reduce((sum, r) => sum + (r.estimatedMinutes ?? 0), 0);
 }
 
@@ -235,7 +235,7 @@ export default function HomePage() {
           </div>
           <div className="mt-1 text-[10px] text-ink-dim">
             best {engagement.bestStreakDays}
-            {engagement.freezeAvailable > 0 ? ` · ${engagement.freezeAvailable} freeze available` : ""}
+            {engagement.freezeAvailable > 0 ? ` · ${engagement.freezeAvailable} streak freeze${engagement.freezeAvailable === 1 ? "" : "s"} (auto-used if you miss a day)` : ""}
           </div>
         </Card>
         <Card className="!p-3">
@@ -250,7 +250,7 @@ export default function HomePage() {
 
       <Card title="How much time do you have?">
         <div className="grid grid-cols-5 gap-2">
-          {[3, 5, 10, 20].map((m) => (
+          {[2, 5, 10, 20].map((m) => (
             <Button key={m} variant="ghost" className="!p-2" onClick={() => timePick(m)}>
               {m}m
             </Button>

@@ -14,7 +14,10 @@ const MINUTE_OPTIONS = [5, 10, 15, 20, 30, 45];
 function formatDateInput(ms?: number): string {
   if (!ms) return "";
   const d = new Date(ms);
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function parseDateInput(val: string): number | undefined {

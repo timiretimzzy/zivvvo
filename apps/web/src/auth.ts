@@ -41,9 +41,12 @@ function getClient(): SupabaseClient | null {
 
 export async function initAuth(): Promise<void> {
   if (initialized) return;
-  initialized = true;
   const c = getClient();
-  if (c) {
+  if (!c) {
+    initialized = true;
+    return;
+  }
+  try {
     const { data } = await c.auth.getSession();
     const sessionUser = data.session?.user ?? null;
     const meta = await db.meta.get("supabaseUser");
@@ -60,7 +63,12 @@ export async function initAuth(): Promise<void> {
     } else if (cachedUserFromDb) {
       cachedUser = cachedUserFromDb;
     }
+  } catch (err) {
+    console.error("[Zivvvo] initAuth failed, will retry:", err);
+    // Don't set initialized — allow retry on next call
+    return;
   }
+  initialized = true;
 }
 
 export async function signInWithGoogle(): Promise<void> {

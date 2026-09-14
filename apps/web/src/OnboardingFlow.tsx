@@ -39,6 +39,8 @@ export function OnboardingFlow() {
   const completeOnboarding = useApp((s) => s.completeOnboarding);
   const [step, setStep] = useState(0);
   const [sel, setSel] = useState<Selection>({ name: "", goal: null, examDate: null, timeline: null, confidence: null });
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const today = new Date();
   const todayInput = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
@@ -46,13 +48,21 @@ export function OnboardingFlow() {
   const finish = async () => {
     if (!sel.goal || !sel.examDate || !sel.timeline || !sel.confidence) return;
     const timeline = TIMELINES.find((t) => t.id === sel.timeline)!;
-    await completeOnboarding({
-      name: sel.name,
-      goal: sel.goal,
-      examDate: sel.examDate,
-      dailyMinutes: timeline.minutesPerDay,
-      initialConfidence: sel.confidence,
-    });
+    setSubmitting(true);
+    setError(null);
+    try {
+      await completeOnboarding({
+        name: sel.name,
+        goal: sel.goal,
+        examDate: sel.examDate,
+        dailyMinutes: timeline.minutesPerDay,
+        initialConfidence: sel.confidence,
+      });
+    } catch (err) {
+      console.error("[Zivvvo] Onboarding failed:", err);
+      setError("Something went wrong. Please try again.");
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -223,16 +233,19 @@ export function OnboardingFlow() {
               Back
             </Button>
             <Button
-              disabled={!sel.confidence}
+              disabled={!sel.confidence || submitting}
               onClick={() => {
                 play("start");
                 vibrate(30);
                 void finish();
               }}
             >
-              Start learning
+              {submitting ? "Setting up…" : "Start learning"}
             </Button>
           </div>
+          {error && (
+            <p className="rounded-xl bg-bad/10 px-4 py-2 text-sm text-bad">{error}</p>
+          )}
         </div>
       )}
 

@@ -13,14 +13,16 @@ import {
   defaultConfig,
   dayOfEpoch,
   initialEngagementState,
+  levelInfo,
   reduceEngagement,
   type EngagementEvent,
   type EngagementState,
   type ReviewState,
 } from "@zivvvo/learning-engine";
 import { db, loadLearnerData, persistAttempt, persistEngagement, persistReview, persistSession, type StoredLearner } from "./db";
-import { syncManager, pushLearnerState, restoreFromCloud } from "./sync-supabase";
+import { syncManager, pushLearnerState, restoreFromCloud, clearCloudData } from "./sync-supabase";
 import { initAuth, getSupabaseUserId, isAuthenticated, signOut as authSignOut } from "./auth";
+import { isSoundMuted, play as playSound } from "./sound";
 import { DEMO_LEARNERS, demoEngagement, demoLearnerRecord, sealedAttemptsFor } from "./seed";
 import { pack } from "./catalog";
 import type { ConfidenceBand, GoalId } from "./onboarding";
@@ -99,6 +101,7 @@ export const useApp = create<AppStore>((set, get) => ({
   init: async (authUserId?: string) => {
     try {
     await initAuth();
+    // Always resolve the real auth user — initAuth populates cachedUser from session
     const supabaseUserId = authUserId ?? getSupabaseUserId();
     const previousUserId = get().currentSupabaseUserId;
     const userSwitched = supabaseUserId && previousUserId && supabaseUserId !== previousUserId;
@@ -118,8 +121,11 @@ export const useApp = create<AppStore>((set, get) => ({
     const meta = await db.meta.get("activeLearner");
     const activeLearnerId = (meta?.value as string | undefined) ?? null;
 
-    // If logged in and no local learner, try to restore from cloud
-    if (isAuthenticated() && learners.length === 0) {
+    // If logged in and no local learner (or no learner matching this user), try to restore from cloud
+    const hasMatchingLearner = supabaseUserId
+      ? learners.some((l) => l.supabaseUserId === supabaseUserId)
+      : learners.length > 0;
+    if (isAuthenticated() && !hasMatchingLearner) {
       const cloud = await restoreFromCloud();
       if (cloud?.learner) {
         const learner = cloud.learner;
@@ -287,7 +293,7 @@ export const useApp = create<AppStore>((set, get) => ({
     const todayStart = now - (now % DAY_MS);
     const allSessions = await db.sessions.where("learnerId").equals(learnerId).toArray();
     const todayMin = allSessions
-      .filter((r) => r.completedAt && r.createdAt >= todayStart)
+      .filter((r) => r.completedAt && r.completedAt >= todayStart)
       .reduce((sum, r) => sum + (r.estimatedMinutes ?? 0), 0);
     if (todayMin >= get().engagement.dailyGoalMin && dailyGoalRewardedDay !== day) {
       dailyGoalRewardedDay = day;
@@ -310,18 +316,25 @@ export const useApp = create<AppStore>((set, get) => ({
   advanceEngagement: (event) => {
     const learnerId = get().activeLearnerId;
     if (!learnerId) return;
+    const prevLevel = levelInfo(get().engagement.xp, defaultConfig).level;
     const next = reduceEngagement(get().engagement, event, defaultConfig);
+    const nextLevel = levelInfo(next.xp, defaultConfig).level;
     void persistEngagement(learnerId, next);
     set({ engagement: next });
+    if (nextLevel > prevLevel && !isSoundMuted()) {
+      playSound("levelUp");
+    }
     pushToCloud();
   },
 
   resetDemo: async () => {
     dailyGoalRewardedDay = -1;
+    void clearCloudData();
     await db.delete();
     await db.open();
     set({
       ready: true,
+      currentSupabaseUserId: getSupabaseUserId(),
       learners: [],
       activeLearnerId: null,
       attempts: [],

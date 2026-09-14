@@ -106,7 +106,7 @@ export function learnPath(state: LearnerState, now = Date.now()): LearnPath {
       evidence: stat?.evidence ?? 0,
       status: toneFor({ label: status.label, tone: status.tone }, t.id),
       reason: reasonFor(t.id, now),
-      action: { label: "Focus this", sessionType: "topicsession" as const },
+      action: { label: stat && stat.mastery >= 0.8 ? "Review" : stat && stat.mastery >= 0.5 ? "Strengthen" : "Focus this", sessionType: "topicsession" as const },
     };
   });
 

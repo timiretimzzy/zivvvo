@@ -146,6 +146,15 @@ export async function restoreFromCloud(): Promise<{
   };
 }
 
+export async function clearCloudData(): Promise<void> {
+  const c = await getClient();
+  if (!c) return;
+  const { data: { user } } = await c.auth.getUser();
+  if (!user) return;
+  await c.from("learner_state").delete().eq("user_id", user.id);
+  await c.from("attempts").delete().eq("user_id", user.id);
+}
+
 // ─── Wired singleton ────────────────────────────────────────────────────────────
 
 const dexieHost = {

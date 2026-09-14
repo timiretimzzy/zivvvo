@@ -75,6 +75,9 @@ function SessionRunner({ session }: { session: LearningSession }) {
     void completeSession();
   };
 
+  const [error, setError] = useState<string | null>(null);
+  const checkingRef = useRef(false);
+
   const onConfidence = (confidence: Confidence) => {
     play("select");
     if (!question) return;
@@ -88,6 +91,9 @@ function SessionRunner({ session }: { session: LearningSession }) {
       } else {
         finish();
       }
+    }).catch((err) => {
+      console.error("[Zivvvo] recordAnswer failed:", err);
+      setError("Failed to record answer. Please try again.");
     });
   };
 
@@ -104,6 +110,9 @@ function SessionRunner({ session }: { session: LearningSession }) {
       } else {
         finish();
       }
+    }).catch((err) => {
+      console.error("[Zivvvo] recordAnswer failed:", err);
+      setError("Failed to record answer. Please try again.");
     });
   };
 
@@ -149,7 +158,7 @@ function SessionRunner({ session }: { session: LearningSession }) {
             ) : null}
           </div>
           <p className="mt-1 text-sm text-ink-dim">
-            {m ? `${m.correct} of ${m.total} correct. ` : `${s?.correctCount} of ${s?.totalCount} correct. `}
+            {m ? `${m.correct} of ${m.total} correct. ` : `${s?.correctCount ?? 0} of ${s?.totalCount ?? 0} correct. `}
             {s?.improvementReason ? s.improvementReason : ""}
           </p>
         </Card>
@@ -181,11 +190,23 @@ function SessionRunner({ session }: { session: LearningSession }) {
     );
   }
 
-  if (!question) return null;
+  if (!question) {
+    return (
+      <div className="space-y-4 text-center">
+        <Card>
+          <p className="text-sm text-ink-dim">This session has no questions to display. Go back and try a different session.</p>
+        </Card>
+        <Button onClick={() => useApp.getState().setTab("home")}>Back home</Button>
+      </div>
+    );
+  }
 
   /* ── Active question ── */
   return (
     <div className="space-y-4">
+      {error && (
+        <div className="rounded-xl bg-bad/10 px-4 py-2 text-sm text-bad">{error}</div>
+      )}
       {/* Progress + timer */}
       <div className="flex items-center gap-3">
         <span className="text-xs font-semibold text-ink-dim tabular-nums">
@@ -252,7 +273,8 @@ function SessionRunner({ session }: { session: LearningSession }) {
         <>
           <Button
             onClick={() => {
-              if (!selected.length) return;
+              if (!selected.length || checkingRef.current) return;
+              checkingRef.current = true;
               if (gradeQuestion(question, selected)) {
                 play("correct");
                 vibrate(15);
@@ -261,6 +283,7 @@ function SessionRunner({ session }: { session: LearningSession }) {
                 vibrate([30, 40, 30]);
               }
               setRevealed(true);
+              checkingRef.current = false;
             }}
             disabled={selected.length === 0}
           >

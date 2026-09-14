@@ -183,7 +183,7 @@ export default function App() {
   }, [ready]);
 
   const handleSignOut = async () => {
-    if (!window.confirm("Sign out? Your local progress will be kept.")) return;
+    if (!window.confirm("Sign out? Your data is saved to the cloud and will restore when you sign back in.")) return;
     await useApp.getState().signOut();
   };
 

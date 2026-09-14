@@ -4,6 +4,9 @@ import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import fs from "fs";
 
+// Import ws for Node.js < 22 WebSocket support (Supabase realtime-js needs it)
+import ws from "ws";
+
 // Load env from .env file (simple parser, no dotenv dependency)
 const envPath = new URL("./.env", import.meta.url).pathname;
 if (fs.existsSync(envPath)) {
@@ -31,7 +34,10 @@ if (!PAYNOW_ID || !PAYNOW_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
   process.exit(1);
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+  auth: { persistSession: false },
+  realtime: { transport: ws },
+});
 
 const PLANS = {
   monthly:  { amount: 2.00,  months: 1,  label: "Monthly" },

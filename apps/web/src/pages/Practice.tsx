@@ -39,8 +39,13 @@ function SessionRunner({ session }: { session: LearningSession }) {
   const [revealed, setRevealed] = useState(false);
   const [done, setDone] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(session.estimatedMinutes * 60);
+  const [secondsLeft, setSecondsLeft] = useState(Math.max(1, session.estimatedMinutes * 60));
   const startedAt = useRef(Date.now());
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const isMock = session.type === "mock";
 
@@ -83,6 +88,7 @@ function SessionRunner({ session }: { session: LearningSession }) {
     if (!question) return;
     const durationMs = Math.max(250, Date.now() - startedAt.current);
     void recordAnswer(question, selected, confidence, durationMs).then(() => {
+      if (!mountedRef.current) return;
       if (index + 1 < total) {
         setIndex(index + 1);
         setSelected([]);
@@ -93,7 +99,7 @@ function SessionRunner({ session }: { session: LearningSession }) {
       }
     }).catch((err) => {
       console.error("[Zivvvo] recordAnswer failed:", err);
-      setError("Failed to record answer. Please try again.");
+      if (mountedRef.current) setError("Failed to record answer. Please try again.");
     });
   };
 
@@ -102,6 +108,7 @@ function SessionRunner({ session }: { session: LearningSession }) {
     if (!question) return;
     const durationMs = Math.max(250, Date.now() - startedAt.current);
     void recordAnswer(question, [], "guess", durationMs).then(() => {
+      if (!mountedRef.current) return;
       if (index + 1 < total) {
         setIndex(index + 1);
         setSelected([]);
@@ -112,7 +119,7 @@ function SessionRunner({ session }: { session: LearningSession }) {
       }
     }).catch((err) => {
       console.error("[Zivvvo] recordAnswer failed:", err);
-      setError("Failed to record answer. Please try again.");
+      if (mountedRef.current) setError("Failed to record answer. Please try again.");
     });
   };
 
@@ -196,7 +203,7 @@ function SessionRunner({ session }: { session: LearningSession }) {
         <Card>
           <p className="text-sm text-ink-dim">This session has no questions to display. Go back and try a different session.</p>
         </Card>
-        <Button onClick={() => useApp.getState().setTab("home")}>Back home</Button>
+        <Button onClick={() => { useApp.getState().abandonSession(); useApp.getState().setTab("home"); }}>Back home</Button>
       </div>
     );
   }

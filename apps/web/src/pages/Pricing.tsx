@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useApp } from "../store";
-import { getSupabaseUserId, getCurrentUser } from "../auth";
+import { getSupabaseUserId, getCurrentUser, getAccessToken } from "../auth";
 
 const PLANS = [
   { id: "monthly", price: "$2", period: "month", savings: null },
@@ -20,7 +20,8 @@ export default function PricingPage() {
     try {
       const userId = getSupabaseUserId();
       const user = await getCurrentUser();
-      if (!userId || !user) {
+      const token = await getAccessToken();
+      if (!userId || !user || !token) {
         setError("Please sign in first.");
         setLoading(null);
         return;
@@ -28,12 +29,11 @@ export default function PricingPage() {
 
       const res = await fetch("/api/paynow/initiate", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId,
-          plan: planId,
-          email: user.email ?? "",
-        }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ plan: planId }),
       });
 
       const data = await res.json();

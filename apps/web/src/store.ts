@@ -237,7 +237,12 @@ export const useApp = create<AppStore>((set, get) => ({
 
   startSession: async (s: LearningSession) => {
     await persistSession(s);
-    set({ activeSession: s });
+    set((state) => ({
+      activeSession: s,
+      sessions: state.sessions.some((sess) => sess.id === s.id)
+        ? state.sessions
+        : [...state.sessions, s],
+    }));
   },
 
   recordAnswer: async (q: Question, selected: number[], confidence: Confidence, durationMs: number) => {

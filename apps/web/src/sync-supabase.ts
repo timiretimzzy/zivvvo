@@ -9,7 +9,10 @@ import type { EngagementState } from "@zivvvo/learning-engine";
 let clientPromise: Promise<SupabaseClient<any, any, any> | null> | null = null;
 
 async function getClient(): Promise<SupabaseClient | null> {
-  if (clientPromise) return clientPromise;
+  if (clientPromise) {
+    const c = await clientPromise;
+    if (c) return c;
+  }
   const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
   if (!url || !key) {
@@ -21,7 +24,11 @@ async function getClient(): Promise<SupabaseClient | null> {
       db: { schema: "zivvvo" },
       auth: { persistSession: true, autoRefreshToken: true },
     }),
-  );
+  ).catch((err) => {
+    console.error("[Zivvvo] Failed to init Supabase client:", err);
+    clientPromise = null;
+    return null;
+  });
   return clientPromise;
 }
 

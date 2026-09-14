@@ -4,10 +4,9 @@ import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import fs from "fs";
 
-// Import ws for Node.js < 22 WebSocket support (Supabase realtime-js needs it)
 import ws from "ws";
 
-// Load env from .env file (simple parser, no dotenv dependency)
+// Load env from .env file
 const envPath = new URL("./.env", import.meta.url).pathname;
 if (fs.existsSync(envPath)) {
   for (const line of fs.readFileSync(envPath, "utf8").split("\n")) {
@@ -16,7 +15,7 @@ if (fs.existsSync(envPath)) {
     const eq = trimmed.indexOf("=");
     if (eq < 0) continue;
     const key = trimmed.slice(0, eq).trim();
-    const val = trimmed.slice(eq + 1).trim();
+    const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
     if (!process.env[key]) process.env[key] = val;
   }
 }
@@ -46,14 +45,15 @@ const PLANS = {
   yearly:   { amount: 12.00, months: 12, label: "Yearly" },
 };
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function generateHash(values, key) {
   const concatenated = values.join("") + key;
   return crypto.createHash("sha512").update(concatenated, "utf8").digest("hex").toUpperCase();
 }
 
-function generateReference(userId) {
-  const short = userId.replace(/-/g, "").slice(0, 8);
-  return `zivvvo-${short}-${Date.now()}`;
+function generateReference() {
+  return `zivvvo-${crypto.randomUUID()}`;
 }
 
 function calculateExpiry(months) {
@@ -66,31 +66,77 @@ function parseUrlEncoded(str) {
   const result = {};
   for (const pair of str.split("&")) {
     const [key, ...rest] = pair.split("=");
-    result[decodeURIComponent(key)] = decodeURIComponent(rest.join("="));
+    if (key) result[decodeURIComponent(key)] = decodeURIComponent(rest.join("="));
   }
   return result;
 }
 
+// Simple in-memory rate limiter
+const rateBuckets = new Map();
+function rateLimit(maxPerMin) {
+  return (req, res, next) => {
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const now = Date.now();
+    const bucket = rateBuckets.get(ip);
+    if (!bucket || now - bucket.start > 60000) {
+      rateBuckets.set(ip, { start: now, count: 1 });
+      return next();
+    }
+    bucket.count++;
+    if (bucket.count > maxPerMin) {
+      return res.status(429).json({ error: "Too many requests" });
+    }
+    next();
+  };
+}
+
+// Cleanup old rate limit buckets every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now() - 120000;
+  for (const [ip, bucket] of rateBuckets) {
+    if (bucket.start < cutoff) rateBuckets.delete(ip);
+  }
+}, 300000);
+
+// Verify Supabase JWT from Authorization header
+async function verifyAuth(req, res, next) {
+  const auth = req.headers.authorization;
+  if (!auth?.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Missing authorization" });
+  }
+  const token = auth.slice(7);
+  try {
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+    req.authUserId = data.user.id;
+    next();
+  } catch {
+    return res.status(401).json({ error: "Auth verification failed" });
+  }
+}
+
 const app = express();
-app.use(cors());
+app.use(cors({ origin: ["https://www.zivvvo.co.zw", "https://zivvvo.co.zw"] }));
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
-// Health check
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
-// Initiate a Paynow transaction
-app.post("/api/paynow/initiate", async (req, res) => {
+// Initiate a Paynow transaction (requires auth)
+app.post("/api/paynow/initiate", rateLimit(10), verifyAuth, async (req, res) => {
   try {
-    const { userId, plan, email } = req.body;
-    if (!userId || !plan || !PLANS[plan]) {
-      return res.status(400).json({ error: "Invalid userId or plan" });
+    const { plan } = req.body;
+    const userId = req.authUserId;
+
+    if (!plan || !PLANS[plan]) {
+      return res.status(400).json({ error: "Invalid plan" });
     }
 
     const planInfo = PLANS[plan];
-    const reference = generateReference(userId);
+    const reference = generateReference();
 
-    // Insert pending transaction
     const { error: insertErr } = await supabase.from("payments").insert({
       reference,
       user_id: userId,
@@ -104,7 +150,6 @@ app.post("/api/paynow/initiate", async (req, res) => {
       return res.status(500).json({ error: "Failed to create transaction" });
     }
 
-    // Build Paynow initiate request
     const params = new URLSearchParams();
     params.append("id", PAYNOW_ID);
     params.append("reference", reference);
@@ -129,6 +174,7 @@ app.post("/api/paynow/initiate", async (req, res) => {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: params.toString(),
+      signal: AbortSignal.timeout(15000),
     });
 
     const raw = await paynowRes.text();
@@ -136,26 +182,22 @@ app.post("/api/paynow/initiate", async (req, res) => {
 
     if (data.Status !== "Ok") {
       console.error("Paynow initiate failed:", data);
+      await supabase.from("payments").update({ status: "failed", updated_at: new Date().toISOString() }).eq("reference", reference);
       return res.status(502).json({ error: data.Error || "Payment initiation failed" });
     }
 
-    // Verify response hash
-    const responseHashValues = [
-      data.BrowserUrl,
-      data.PollUrl,
-      data.Status,
-    ];
+    const responseHashValues = [data.BrowserUrl, data.PollUrl, data.Status];
     const expectedHash = generateHash(responseHashValues, PAYNOW_KEY);
     if (data.Hash !== expectedHash) {
       console.error("Hash mismatch on initiate response");
       return res.status(502).json({ error: "Invalid response hash" });
     }
 
-    // Save poll URL
-    await supabase
+    const { error: updateErr } = await supabase
       .from("payments")
       .update({ paynow_poll_url: data.PollUrl, updated_at: new Date().toISOString() })
       .eq("reference", reference);
+    if (updateErr) console.error("Failed to save poll URL:", updateErr);
 
     res.json({ redirectUrl: data.BrowserUrl, reference });
   } catch (err) {
@@ -164,7 +206,7 @@ app.post("/api/paynow/initiate", async (req, res) => {
   }
 });
 
-// Paynow result webhook
+// Paynow result webhook — idempotent, hash-verified
 app.post("/api/paynow/result", async (req, res) => {
   try {
     const raw = req.body;
@@ -183,21 +225,20 @@ app.post("/api/paynow/result", async (req, res) => {
       return res.status(400).send("Missing fields");
     }
 
-    // Verify hash
+    // ALWAYS verify hash — never skip
     const hashValues = [
       fields.Reference,
-      fields.Amount,
+      fields.Amount || "",
       fields.PaynowReference || "",
       fields.PaymentMethod || "",
       status,
     ];
     const expectedHash = generateHash(hashValues, PAYNOW_KEY);
-    if (paynowHash && paynowHash !== expectedHash) {
-      console.error("Hash mismatch on result for", reference);
+    if (!paynowHash || paynowHash !== expectedHash) {
+      console.error("Hash mismatch/rejected on result for", reference);
       return res.status(403).send("Invalid hash");
     }
 
-    // Look up the transaction
     const { data: payment, error: lookupErr } = await supabase
       .from("payments")
       .select("*")
@@ -209,6 +250,11 @@ app.post("/api/paynow/result", async (req, res) => {
       return res.status(404).send("Not found");
     }
 
+    // Idempotency: skip if already paid
+    if (payment.status === "paid") {
+      return res.status(200).send("OK");
+    }
+
     if (status === "Paid") {
       const planInfo = PLANS[payment.plan];
       if (!planInfo) {
@@ -218,7 +264,6 @@ app.post("/api/paynow/result", async (req, res) => {
 
       const expiresAt = calculateExpiry(planInfo.months);
 
-      // Update learner_state with premium plan
       const { error: updateErr } = await supabase
         .from("learner_state")
         .update({
@@ -233,19 +278,19 @@ app.post("/api/paynow/result", async (req, res) => {
         return res.status(500).send("Failed to activate plan");
       }
 
-      // Update payment status
-      await supabase
+      const { error: payErr } = await supabase
         .from("payments")
         .update({ status: "paid", updated_at: new Date().toISOString() })
         .eq("reference", reference);
+      if (payErr) console.error("Failed to update payment status:", payErr);
 
-      console.log(`Plan activated: ${payment.user_id} → premium until ${expiresAt}`);
+      console.log(`Plan activated: ${payment.user_id} -> premium until ${expiresAt}`);
     } else {
-      // Update status (could be "Cancelled", "Expired", etc.)
-      await supabase
+      const { error: cancelErr } = await supabase
         .from("payments")
         .update({ status: status.toLowerCase(), updated_at: new Date().toISOString() })
         .eq("reference", reference);
+      if (cancelErr) console.error("Failed to update payment status:", cancelErr);
     }
 
     res.status(200).send("OK");
@@ -255,8 +300,8 @@ app.post("/api/paynow/result", async (req, res) => {
   }
 });
 
-// Check transaction status
-app.get("/api/paynow/status", async (req, res) => {
+// Check transaction status (requires auth, can only check own)
+app.get("/api/paynow/status", rateLimit(30), verifyAuth, async (req, res) => {
   try {
     const { ref } = req.query;
     if (!ref) return res.status(400).json({ error: "Missing ref" });
@@ -265,6 +310,7 @@ app.get("/api/paynow/status", async (req, res) => {
       .from("payments")
       .select("status, plan, amount")
       .eq("reference", ref)
+      .eq("user_id", req.authUserId)
       .single();
 
     if (error || !payment) {
@@ -278,6 +324,20 @@ app.get("/api/paynow/status", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+// Global error handler
+app.use((err, _req, res, _next) => {
+  console.error("Unhandled:", err);
+  res.status(500).json({ error: "Internal server error" });
+});
+
+const server = app.listen(PORT, () => {
   console.log(`Zivvvo API running on port ${PORT}`);
+});
+
+process.on("SIGTERM", () => {
+  console.log("SIGTERM received, shutting down...");
+  server.close(() => process.exit(0));
+});
+process.on("SIGINT", () => {
+  server.close(() => process.exit(0));
 });

@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useApp, type Tab } from "./store";
 import { useSync } from "./sync";
 import { syncManager } from "./sync-supabase";
 import { OnboardingFlow } from "./OnboardingFlow";
 import { isSoundMuted, play, setSoundMuted } from "./sound";
-import { onAuthStateChange, signInWithGoogle } from "./auth";
+import { onAuthStateChange, signInWithGoogle, getAccessToken } from "./auth";
 import HomePage from "./pages/Home";
 import LearnPage from "./pages/Learn";
 import PracticePage from "./pages/Practice";
@@ -63,25 +63,39 @@ function PaymentReturnPage() {
   const [status, setStatus] = useState<"checking" | "paid" | "failed">("checking");
   const params = new URLSearchParams(window.location.search);
   const ref = params.get("ref");
+  const timers = useRef<number[]>([]);
+
+  useEffect(() => {
+    return () => { timers.current.forEach(clearTimeout); };
+  }, []);
+
+  const schedulePoll = useCallback((delayMs: number) => {
+    const id = window.setTimeout(poll, delayMs);
+    timers.current.push(id);
+  }, []);
 
   const poll = useCallback(async () => {
     if (!ref) { setStatus("failed"); return; }
     try {
-      const res = await fetch(`/api/paynow/status?ref=${encodeURIComponent(ref)}`);
+      const token = await getAccessToken();
+      const res = await fetch(`/api/paynow/status?ref=${encodeURIComponent(ref)}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       const data = await res.json();
       if (data.status === "paid") {
         setStatus("paid");
         setPlan("premium");
-        setTimeout(() => setTab("home"), 3000);
+        const id = window.setTimeout(() => setTab("home"), 3000);
+        timers.current.push(id);
       } else if (data.status === "pending") {
-        setTimeout(poll, 2000);
+        schedulePoll(2000);
       } else {
         setStatus("failed");
       }
     } catch {
-      setTimeout(poll, 3000);
+      schedulePoll(3000);
     }
-  }, [ref, setPlan, setTab]);
+  }, [ref, setPlan, setTab, schedulePoll]);
 
   useEffect(() => { poll(); }, [poll]);
 
@@ -215,6 +229,9 @@ export default function App() {
         if (!state.activeLearnerId || state.currentSupabaseUserId !== user.id) {
           void state.init(user.id);
         }
+      } else if (authUser) {
+        // Session expired or signed out — reset app state
+        useApp.getState().signOut();
       }
     });
   }, []);
@@ -254,7 +271,10 @@ export default function App() {
       {isPaymentReturn ? (
         <div className="app-shell"><PaymentReturnPage /></div>
       ) : !ready || !authChecked ? (
-        <div className="app-shell items-center justify-center text-ink-dim">Loading…</div>
+        <div className="app-shell items-center justify-center text-ink-dim">
+          <div className="mb-4 h-8 w-8 animate-spin rounded-full border-4 border-ink-dim border-t-primary" />
+          <p className="text-sm">Loading…</p>
+        </div>
       ) : !authUser ? (
         <LoginScreen />
       ) : !activeLearnerId ? (

@@ -126,3 +126,11 @@ export function isAuthenticated(): boolean {
 export function getSupabaseUserId(): string | null {
   return cachedUser?.id ?? null;
 }
+
+export async function getAccessToken(): Promise<string | null> {
+  await initAuth();
+  const c = getClient();
+  if (!c) return null;
+  const { data } = await c.auth.getSession();
+  return data.session?.access_token ?? null;
+}

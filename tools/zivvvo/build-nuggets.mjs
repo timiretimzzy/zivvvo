@@ -1,5 +1,19 @@
 import fs from 'fs';
-const csv = fs.readFileSync('C:/Users/TIMIRE/Downloads/Zivvvo_NUGGETS_SERIOUS_UPGRADE.csv', 'utf8');
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(__dirname, '../..');
+
+const csvPath = process.argv[2] || path.join(projectRoot, '../Zivvvo_NUGGETS_SERIOUS_UPGRADE.csv');
+const outputPath = path.join(projectRoot, 'apps/web/src/data/nuggets.json');
+
+if (!fs.existsSync(csvPath)) {
+  console.error('CSV not found:', csvPath);
+  process.exit(1);
+}
+
+const csv = fs.readFileSync(csvPath, 'utf8');
 const lines = [];
 let current = '';
 let inQuotes = false;
@@ -45,5 +59,5 @@ for (const [k, v] of Object.entries(byTopic)) {
   const withImg = v.filter(n => n.imageRef).length;
   console.log('  ' + k + ': ' + v.length + ' (' + withImg + ' with images)');
 }
-fs.writeFileSync('C:/Users/TIMIRE/Downloads/Zivvvo/apps/web/src/data/nuggets.json', JSON.stringify(nuggets, null, 2));
-console.log('Written to apps/web/src/data/nuggets.json');
+fs.writeFileSync(outputPath, JSON.stringify(nuggets, null, 2));
+console.log('Written to', outputPath);

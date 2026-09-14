@@ -219,6 +219,7 @@ export default function App() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const prevAuthUser = useRef<User | null>(null);
 
   useEffect(() => {
     return onAuthStateChange((user) => {
@@ -229,10 +230,11 @@ export default function App() {
         if (!state.activeLearnerId || state.currentSupabaseUserId !== user.id) {
           void state.init(user.id);
         }
-      } else if (authUser) {
+      } else if (prevAuthUser.current) {
         // Session expired or signed out — reset app state
         useApp.getState().signOut();
       }
+      prevAuthUser.current = user;
     });
   }, []);
 

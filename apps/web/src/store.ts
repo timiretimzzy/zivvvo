@@ -106,6 +106,10 @@ export const useApp = create<AppStore>((set, get) => ({
   planExpiresAt: undefined,
 
   init: async (authUserId?: string) => {
+    // Skip if already initialized for this user
+    const current = get();
+    const targetUserId = authUserId ?? getSupabaseUserId();
+    if (current.ready && current.currentSupabaseUserId === (targetUserId ?? null)) return;
     try {
     await initAuth();
     // Always resolve the real auth user — initAuth populates cachedUser from session

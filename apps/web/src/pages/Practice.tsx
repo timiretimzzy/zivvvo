@@ -372,49 +372,53 @@ export default function PracticePage() {
   const reviews = useApp((s) => s.reviews);
   const startSession = useApp((s) => s.startSession);
   const learnerId = useApp((s) => s.activeLearnerId);
+  const plan = useApp((s) => s.plan);
+  const canStartSession = useApp((s) => s.canStartSession);
+  const sessionsToday = useApp((s) => s.sessionsToday);
+  const setTab = useApp((s) => s.setTab);
   const [mode, setMode] = useState<PracticeMode>("quiz");
+  const [paywall, setPaywall] = useState(false);
 
   if (activeSession) return <SessionRunner session={activeSession} />;
   if (!learnerId) return null;
 
-  const launch = (minutes: number) => {
+  const counts = sessionsToday();
+  const totalRemaining = plan === "premium" ? Infinity : Math.max(0, 2 - counts.diagnostic - counts.other);
+
+  const guard = (type: string, fn: () => void) => () => {
+    if (!canStartSession(type)) { setPaywall(true); return; }
+    fn();
+  };
+
+  const launchSmart = guard("smart", () => {
     play("start");
     vibrate(20);
-    const r = quickSession(attempts, learnerId, minutes);
+    const r = smartSession(attempts, learnerId!);
     void startSession(r.session);
-  };
-  const launchSmart = () => {
-    play("start");
-    vibrate(20);
-    const r = smartSession(attempts, learnerId);
-    void startSession(r.session);
-  };
-  const launchWeakness = () => {
+  });
+  const launchWeakness = guard("weakness", () => {
     const w = topWeakness(attempts);
     if (!w) return;
     play("start");
     vibrate(20);
-    const r = weaknessSession(w.topic.id, attempts, learnerId);
+    const r = weaknessSession(w.topic.id, attempts, learnerId!);
     void startSession(r.session);
-  };
-  const launchReview = () => {
+  });
+  const launchReview = guard("review", () => {
     play("start");
     vibrate(20);
-    const r = dueReviewSession(attempts, reviews, learnerId);
+    const r = dueReviewSession(attempts, reviews, learnerId!);
     if (r) void startSession(r.session);
-  };
-  const launchMistakes = () => {
+  });
+  const launchMistakes = guard("mistake-review", () => {
     play("start");
     vibrate(20);
-    const r = mistakeReviewSession(attempts, learnerId);
+    const r = mistakeReviewSession(attempts, learnerId!);
     if (r) void startSession(r.session);
-  };
-  const launchMock = () => {
-    play("start");
-    vibrate(20);
-    const r = mockSession(attempts, learnerId);
-    void startSession(r.session);
-  };
+  });
+  const launchMock = plan === "premium"
+    ? () => { play("start"); vibrate(20); const r = mockSession(attempts, learnerId!); void startSession(r.session); }
+    : () => setPaywall(true);
 
   const weak = topWeakness(attempts);
   const due = dueReviewCount(reviews);
@@ -433,6 +437,24 @@ export default function PracticePage() {
   return (
     <div className="space-y-3">
       <ModeToggle mode={mode} onChange={setMode} />
+
+      {/* ── Free session limit banner ── */}
+      {plan === "free" && (
+        <div className="rounded-xl bg-surface-2 p-3 text-xs text-ink-dim flex items-center justify-between">
+          <span>
+            Free: {totalRemaining} session{totalRemaining === 1 ? "" : "s"} left today
+          </span>
+          {totalRemaining <= 0 ? (
+            <button onClick={() => setTab("pricing")} className="ml-2 text-primary font-medium">
+              Upgrade
+            </button>
+          ) : (
+            <button onClick={() => setTab("pricing")} className="ml-2 text-primary font-medium">
+              Upgrade
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Recommended (only when something is actionable) ── */}
       {hasDue && (
@@ -487,7 +509,12 @@ export default function PracticePage() {
         <p className="text-sm text-ink-dim mb-3">How much time do you have?</p>
         <div className="grid grid-cols-4 gap-2">
           {[2, 5, 10, 20].map((m) => (
-            <Button key={m} variant="ghost" className="!p-2" onClick={() => launch(m)}>
+            <Button key={m} variant="ghost" className="!p-2" onClick={() => {
+              if (!canStartSession("quick")) { setPaywall(true); return; }
+              play("start"); vibrate(20);
+              const r = quickSession(attempts, learnerId!, m);
+              void startSession(r.session);
+            }}>
               {m}m
             </Button>
           ))}
@@ -501,8 +528,41 @@ export default function PracticePage() {
           Full mock exam: {ZVID_MOCK_DEFAULT.questionCount} questions · {ZVID_MOCK_DEFAULT.durationMin} min ·{" "}
           pass mark {Math.round(ZVID_MOCK_DEFAULT.passMark * 100)}%.
         </p>
-        <Button variant="ghost" onClick={launchMock}>Start mock exam</Button>
+        {plan === "premium" ? (
+          <Button variant="ghost" onClick={launchMock}>Start mock exam</Button>
+        ) : (
+          <Button variant="ghost" onClick={() => setPaywall(true)}>
+            ★ Premium only — Upgrade
+          </Button>
+        )}
       </Card>
+
+      {/* ── Paywall modal ── */}
+      {paywall && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={() => setPaywall(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-surface p-6 text-center" onClick={(e) => e.stopPropagation()}>
+            {plan === "free" && totalRemaining <= 0 ? (
+              <>
+                <h2 className="text-lg font-bold">Free sessions used today</h2>
+                <p className="mt-2 text-sm text-ink-dim">
+                  You've used your 2 free sessions today. Upgrade for unlimited practice.
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-lg font-bold">Mock exams are Premium</h2>
+                <p className="mt-2 text-sm text-ink-dim">
+                  Upgrade to unlock mock exams and unlimited sessions.
+                </p>
+              </>
+            )}
+            <div className="mt-5 flex gap-3">
+              <Button variant="ghost" onClick={() => setPaywall(false)}>Dismiss</Button>
+              <Button onClick={() => { setPaywall(false); setTab("pricing"); }}>See Plans</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -27,7 +27,7 @@ import { DEMO_LEARNERS, demoEngagement, demoLearnerRecord, sealedAttemptsFor } f
 import { pack } from "./catalog";
 import type { ConfidenceBand, GoalId } from "./onboarding";
 
-export type Tab = "home" | "learn" | "practice" | "progress" | "coach" | "settings";
+export type Tab = "home" | "learn" | "practice" | "progress" | "coach" | "settings" | "pricing";
 
 /** Guard so the XP-granting daily-goal bonus is awarded at most once per day. */
 let dailyGoalRewardedDay = -1;
@@ -44,6 +44,8 @@ export interface AppStore {
   engagement: EngagementState;
   activeSession: LearningSession | null;
   tab: Tab;
+  plan: "free" | "premium";
+  planExpiresAt?: number;
   init: (authUserId?: string) => Promise<void>;
   pickLearner: (id: string) => Promise<void>;
   seedDemos: () => Promise<void>;
@@ -58,6 +60,9 @@ export interface AppStore {
   recordAnswer: (q: Question, selected: number[], confidence: Confidence, durationMs: number) => Promise<AttemptEvent>;
 completeSession: () => Promise<void>;
   abandonSession: () => void;
+  sessionsToday: () => { diagnostic: number; other: number };
+  canStartSession: (type: string) => boolean;
+  setPlan: (plan: "free" | "premium", expiresAt?: number) => void;
   setTab: (t: Tab) => void;
   updateLearner: (id: string, patch: Partial<StoredLearner>) => Promise<void>;
   /** Reduce one engagement event, persist, and re-render. */
@@ -97,6 +102,8 @@ export const useApp = create<AppStore>((set, get) => ({
   engagement: initialEngagementState(),
   activeSession: null,
   tab: "home",
+  plan: "free",
+  planExpiresAt: undefined,
 
   init: async (authUserId?: string) => {
     try {
@@ -143,7 +150,7 @@ export const useApp = create<AppStore>((set, get) => ({
         await db.meta.put({ key: "activeLearner", value: learner.id });
         const data = await loadLearnerData(learner.id);
         const engagement = data.engagement ?? initialEngagementState(learner.dailyMinutes);
-        set({ ready: true, currentSupabaseUserId: supabaseUserId ?? null, learners: [learner], activeLearnerId: learner.id, ...data, engagement, tab: "home" });
+        set({ ready: true, currentSupabaseUserId: supabaseUserId ?? null, learners: [learner], activeLearnerId: learner.id, ...data, engagement, tab: "home", plan: learner.plan ?? "free", planExpiresAt: learner.planExpiresAt });
         void syncManager.sync();
         return;
       }
@@ -153,7 +160,7 @@ export const useApp = create<AppStore>((set, get) => ({
       const data = await loadLearnerData(activeLearnerId);
       const learner = learners.find((l) => l.id === activeLearnerId);
       const engagement = data.engagement ?? initialEngagementState(learner?.dailyMinutes);
-      set({ ready: true, currentSupabaseUserId: supabaseUserId ?? null, learners, activeLearnerId, ...data, engagement, tab: "home" });
+      set({ ready: true, currentSupabaseUserId: supabaseUserId ?? null, learners, activeLearnerId, ...data, engagement, tab: "home", plan: learner?.plan ?? "free", planExpiresAt: learner?.planExpiresAt });
     } else if (!activeLearnerId) {
       const matched = supabaseUserId
         ? learners.find((l) => l.supabaseUserId === supabaseUserId)
@@ -205,6 +212,7 @@ export const useApp = create<AppStore>((set, get) => ({
       examDate,
       dailyMinutes,
       initialConfidence,
+      plan: "free",
       ...(supabaseUserId ? { supabaseUserId } : {}),
     };
     await db.learners.put(learner);
@@ -305,6 +313,37 @@ export const useApp = create<AppStore>((set, get) => ({
 
   abandonSession: () => set({ activeSession: null }),
 
+  /** Get today's completed session counts for the current learner. */
+  sessionsToday: () => {
+    const { activeLearnerId, sessions } = get();
+    if (!activeLearnerId) return { diagnostic: 0, other: 0 };
+    const now = Date.now();
+    const todayStart = now - (now % DAY_MS);
+    const today = sessions.filter((s) => s.completedAt && s.completedAt >= todayStart);
+    return {
+      diagnostic: today.filter((s) => s.type === "diagnostic").length,
+      other: today.filter((s) => s.type !== "diagnostic").length,
+    };
+  },
+
+  /** Can this session type be started? Premium users have no limits. */
+  canStartSession: (type: string) => {
+    const { plan } = get();
+    if (plan === "premium") return true;
+    const counts = get().sessionsToday();
+    if (type === "diagnostic") return counts.diagnostic < 1;
+    return counts.other < 1;
+  },
+
+  /** Set plan from Supabase sync or payment confirmation. */
+  setPlan: (plan: "free" | "premium", expiresAt?: number) => {
+    set({ plan, planExpiresAt: expiresAt });
+    const learnerId = get().activeLearnerId;
+    if (learnerId) {
+      void get().updateLearner(learnerId, { plan, planExpiresAt: expiresAt });
+    }
+  },
+
   setTab: (t) => set({ tab: t }),
 
   updateLearner: async (id, patch) => {
@@ -343,6 +382,8 @@ export const useApp = create<AppStore>((set, get) => ({
       engagement: initialEngagementState(),
       activeSession: null,
       tab: "home",
+      plan: "free",
+      planExpiresAt: undefined,
     });
   },
 
@@ -366,6 +407,8 @@ export const useApp = create<AppStore>((set, get) => ({
       engagement: initialEngagementState(),
       activeSession: null,
       tab: "home",
+      plan: "free",
+      planExpiresAt: undefined,
     });
   },
 }));

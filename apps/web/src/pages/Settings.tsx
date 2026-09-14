@@ -30,6 +30,10 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
   const learner = useApp((s) => s.learners.find((l) => l.id === s.activeLearnerId));
   const updateLearner = useApp((s) => s.updateLearner);
   const resetDemo = useApp((s) => s.resetDemo);
+  const plan = useApp((s) => s.plan);
+  const planExpiresAt = useApp((s) => s.planExpiresAt);
+  const sessionsToday = useApp((s) => s.sessionsToday);
+  const setTab = useApp((s) => s.setTab);
 
   const [name, setName] = useState(learner?.name ?? "");
   const [examDate, setExamDate] = useState(formatDateInput(learner?.examDate));
@@ -171,6 +175,35 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
       <Button onClick={handleSave}>
         {saved ? "✓ Saved" : "Save Changes"}
       </Button>
+
+      <Card title="Subscription">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            {plan === "premium" ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-ok/15 px-2.5 py-0.5 text-xs font-semibold text-ok">
+                ★ Premium
+              </span>
+            ) : (
+              <span className="text-sm text-ink-dim">Free tier</span>
+            )}
+          </div>
+          {plan === "premium" && planExpiresAt && (
+            <p className="text-xs text-ink-dim">
+              Active until {new Date(planExpiresAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+            </p>
+          )}
+          {plan === "free" && (
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-ink-dim">
+                {(() => { const c = sessionsToday(); return c.diagnostic + c.other; })()} of 2 free sessions used today
+              </p>
+              <button onClick={() => setTab("pricing")} className="text-xs font-medium text-primary">
+                Upgrade →
+              </button>
+            </div>
+          )}
+        </div>
+      </Card>
 
       <Card title="About">
         <div className="space-y-1 text-sm text-ink-dim">

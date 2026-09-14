@@ -74,6 +74,8 @@ export interface LearnerStateRow {
   reviews: ReviewState[];
   engagement: EngagementState | null;
   updated_at: number | null;
+  plan: string | null;
+  plan_expires_at: string | null;
 }
 
 export async function pushLearnerState(
@@ -99,6 +101,8 @@ export async function pushLearnerState(
     reviews,
     engagement,
     updated_at: Date.now(),
+    plan: learner.plan ?? "free",
+    plan_expires_at: learner.planExpiresAt ? new Date(learner.planExpiresAt).toISOString() : null,
   };
 
   const { error } = await c.from("learner_state").upsert(row, { onConflict: "user_id" });
@@ -137,6 +141,8 @@ export async function restoreFromCloud(): Promise<{
     examDate: state.exam_date ?? undefined,
     dailyMinutes: state.daily_minutes ?? undefined,
     initialConfidence: state.initial_confidence as StoredLearner["initialConfidence"],
+    plan: (state.plan as "free" | "premium") ?? "free",
+    planExpiresAt: state.plan_expires_at ? new Date(state.plan_expires_at).getTime() : undefined,
   };
 
   return {
@@ -153,6 +159,24 @@ export async function clearCloudData(): Promise<void> {
   if (!user) return;
   await c.from("learner_state").delete().eq("user_id", user.id);
   await c.from("attempts").delete().eq("user_id", user.id);
+}
+
+/** Fetch just the plan status from Supabase (lightweight, for post-payment refresh). */
+export async function fetchPlanStatus(): Promise<{ plan: "free" | "premium"; planExpiresAt?: number } | null> {
+  const c = await getClient();
+  if (!c) return null;
+  const { data: { user } } = await c.auth.getUser();
+  if (!user) return null;
+  const { data } = await c
+    .from("learner_state")
+    .select("plan, plan_expires_at")
+    .eq("user_id", user.id)
+    .single();
+  if (!data) return null;
+  return {
+    plan: (data.plan as "free" | "premium") ?? "free",
+    planExpiresAt: data.plan_expires_at ? new Date(data.plan_expires_at).getTime() : undefined,
+  };
 }
 
 // ─── Wired singleton ────────────────────────────────────────────────────────────

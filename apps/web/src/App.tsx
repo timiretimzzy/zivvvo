@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useApp, type Tab } from "./store";
 import { useSync } from "./sync";
 import { syncManager } from "./sync-supabase";
@@ -11,6 +11,7 @@ import PracticePage from "./pages/Practice";
 import ProgressPage from "./pages/Progress";
 import CoachPage from "./pages/Coach";
 import SettingsPage from "./pages/Settings";
+import PricingPage from "./pages/Pricing";
 import ErrorBoundary from "./ErrorBoundary";
 import type { User } from "@supabase/supabase-js";
 
@@ -53,6 +54,63 @@ function SyncIndicator() {
     <span className="flex items-center gap-1 text-xs text-ok" title="All synced">
       ✓ Synced
     </span>
+  );
+}
+
+function PaymentReturnPage() {
+  const setPlan = useApp((s) => s.setPlan);
+  const setTab = useApp((s) => s.setTab);
+  const [status, setStatus] = useState<"checking" | "paid" | "failed">("checking");
+  const params = new URLSearchParams(window.location.search);
+  const ref = params.get("ref");
+
+  const poll = useCallback(async () => {
+    if (!ref) { setStatus("failed"); return; }
+    try {
+      const res = await fetch(`/api/paynow/status?ref=${encodeURIComponent(ref)}`);
+      const data = await res.json();
+      if (data.status === "paid") {
+        setStatus("paid");
+        setPlan("premium");
+        setTimeout(() => setTab("home"), 3000);
+      } else if (data.status === "pending") {
+        setTimeout(poll, 2000);
+      } else {
+        setStatus("failed");
+      }
+    } catch {
+      setTimeout(poll, 3000);
+    }
+  }, [ref, setPlan, setTab]);
+
+  useEffect(() => { poll(); }, [poll]);
+
+  return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      {status === "checking" && (
+        <>
+          <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-ink-dim border-t-primary" />
+          <p className="text-sm text-ink-dim">Confirming your payment…</p>
+        </>
+      )}
+      {status === "paid" && (
+        <>
+          <div className="mb-4 text-5xl">✓</div>
+          <h2 className="text-xl font-bold text-ok">Payment confirmed!</h2>
+          <p className="mt-2 text-sm text-ink-dim">Redirecting you to the app…</p>
+        </>
+      )}
+      {status === "failed" && (
+        <>
+          <div className="mb-4 text-5xl">✕</div>
+          <h2 className="text-xl font-bold text-bad">Payment not confirmed</h2>
+          <p className="mt-2 text-sm text-ink-dim">Something went wrong. Please try again or contact support.</p>
+          <button onClick={() => setTab("home")} className="mt-4 text-sm text-primary font-medium">
+            Back to app
+          </button>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -189,9 +247,13 @@ export default function App() {
   const userName = authUser?.user_metadata?.full_name ?? authUser?.email?.split("@")[0] ?? null;
   const userAvatar = authUser?.user_metadata?.avatar_url ?? null;
 
+  const isPaymentReturn = window.location.pathname === "/payment/return";
+
   return (
     <ErrorBoundary>
-      {!ready || !authChecked ? (
+      {isPaymentReturn ? (
+        <div className="app-shell"><PaymentReturnPage /></div>
+      ) : !ready || !authChecked ? (
         <div className="app-shell items-center justify-center text-ink-dim">Loading…</div>
       ) : !authUser ? (
         <LoginScreen />
@@ -244,6 +306,8 @@ export default function App() {
               <PracticePage />
             ) : showSettings ? (
               <SettingsPage onBack={openSettings} />
+            ) : tab === "pricing" ? (
+              <PricingPage />
             ) : tab === "home" ? (
               <HomePage />
             ) : tab === "learn" ? (

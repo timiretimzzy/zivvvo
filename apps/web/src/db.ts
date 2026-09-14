@@ -13,6 +13,8 @@ export interface StoredLearner {
   dailyMinutes?: number;
   initialConfidence?: ConfidenceBand;
   supabaseUserId?: string;
+  plan: "free" | "premium";
+  planExpiresAt?: number;
 }
 
 export type ReviewRow = ReviewState & { id: string };
@@ -39,6 +41,14 @@ export class ZivvvoDB extends Dexie {
       reviews: "id, learnerId, qid, next",
       sessions: "id, learnerId, type, createdAt",
       learners: "id",
+      meta: "key",
+      engagements: "id",
+    });
+    this.version(3).stores({
+      attempts: "id, learnerId, qid, ts, syncedAt",
+      reviews: "id, learnerId, qid, next",
+      sessions: "id, learnerId, type, createdAt",
+      learners: "id, plan",
       meta: "key",
       engagements: "id",
     });

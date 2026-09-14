@@ -68,6 +68,7 @@ export function demoLearnerRecord(learner: (typeof DEMO_LEARNERS)[number]): Stor
     name: learner.name,
     diagnosticCompleted: true,
     createdAt: Date.now() - 30 * 86_400_000,
+    plan: "free",
   };
 }
 

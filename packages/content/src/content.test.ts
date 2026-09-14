@@ -11,8 +11,8 @@ describe("content pack (content-v1.json)", () => {
     expect(pack.exam).toBe("zvid-provisional");
     expect(pack.questions.length).toBe(pack.stats.total);
     expect(pack.stats.total).toBe(1249);
-    expect(pack.questions.filter((q) => q.status === "answered").length).toBe(980);
-    expect(pack.questions.filter((q) => q.explanation).length).toBe(989);
+    expect(pack.questions.filter((q) => q.status === "answered").length).toBe(982);
+    expect(pack.questions.filter((q) => q.explanation).length).toBe(991);
     expect(pack.questions.filter((q) => q.imageRef).length).toBe(446);
   });
 

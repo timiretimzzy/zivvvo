@@ -40,9 +40,14 @@ export default function HomePage() {
   const updateLearner = useApp((s) => s.updateLearner);
   const learner = useApp((s) => s.learners.find((l) => l.id === s.activeLearnerId));
 
-  const [dateInput, setDateInput] = useState(
-    learner?.examDate ? new Date(learner.examDate).toISOString().slice(0, 10) : "",
-  );
+  const [dateInput, setDateInput] = useState(() => {
+    if (!learner?.examDate) return "";
+    const d = new Date(learner.examDate);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+  });
 
   const nudge = firstActivityNudge(learner?.initialConfidence, attempts.length);
   const lvl = levelInfo(engagement.xp, defaultConfig);

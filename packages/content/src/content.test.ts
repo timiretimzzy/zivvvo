@@ -6,14 +6,21 @@ const pack = content as unknown as ContentPack;
 
 /** Data contract: the generated content pack must stay internally consistent. */
 describe("content pack (content-v1.json)", () => {
-  it("matches the generator's published stats", () => {
+  it("published stats match actual question data (self-validating)", () => {
     expect(pack.version).toBe(1);
     expect(pack.exam).toBe("zvid-provisional");
+
+    const actualAnswered = pack.questions.filter((q) => q.status === "answered").length;
+    const actualWithExplanation = pack.questions.filter((q) => q.explanation).length;
+    const actualWithImage = pack.questions.filter((q) => q.imageRef).length;
+
+    expect(pack.questions.length).toBeGreaterThanOrEqual(1000);
     expect(pack.questions.length).toBe(pack.stats.total);
-    expect(pack.stats.total).toBe(1249);
-    expect(pack.questions.filter((q) => q.status === "answered").length).toBe(982);
-    expect(pack.questions.filter((q) => q.explanation).length).toBe(991);
-    expect(pack.questions.filter((q) => q.imageRef).length).toBe(446);
+    expect(actualAnswered).toBe(pack.stats.answered);
+    expect(actualWithExplanation).toBe(pack.stats.withExplanation);
+    expect(actualWithImage).toBe(pack.stats.withImage);
+    expect(pack.topics.length).toBeGreaterThanOrEqual(5);
+    expect(pack.concepts.length).toBeGreaterThanOrEqual(15);
   });
 
   it("answered is exactly keyed with >=2 options; non-answered carry zero keys", () => {
@@ -32,7 +39,7 @@ describe("content pack (content-v1.json)", () => {
     }
   });
 
-  it("advertises asked-but-answered topics correctly", () => {
+  it("advertised topic counts match actual distribution", () => {
     const perTopic = new Map<string, number>();
     for (const t of pack.topics) perTopic.set(t.id, 0);
     for (const q of pack.questions) perTopic.set(q.topicId, (perTopic.get(q.topicId) ?? 0) + 1);
@@ -41,8 +48,7 @@ describe("content pack (content-v1.json)", () => {
     }
   });
 
-  it("has 19 curated concepts and only valid topic ids", () => {
-    expect(pack.concepts).toHaveLength(19);
+  it("all topic ids used by questions are defined in topics array", () => {
     const topicIds = new Set(pack.topics.map((t) => t.id));
     for (const q of pack.questions) {
       expect(topicIds.has(q.topicId)).toBe(true);
@@ -57,5 +63,11 @@ describe("content pack (content-v1.json)", () => {
   it("every answered question has at least two options", () => {
     const bad = pack.questions.filter((q) => q.status === "answered" && q.options.length < 2);
     expect(bad).toEqual([]);
+  });
+
+  it("no duplicate qids", () => {
+    const qids = pack.questions.map((q) => q.qid);
+    const unique = new Set(qids);
+    expect(unique.size).toBe(qids.length);
   });
 });

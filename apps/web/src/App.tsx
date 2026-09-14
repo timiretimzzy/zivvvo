@@ -77,10 +77,9 @@ function LoginScreen() {
     <div className="app-shell overflow-y-auto">
       <div className="mx-auto max-w-lg space-y-8 px-6 py-10 text-center">
         <div className="flex justify-center">
-          <img src="/icons/icon-192.png" alt="Zivvvo" className="h-20 w-20 rounded-2xl" />
+          <img src="/logo-wordmark.png" alt="Zivvvo" className="h-14 w-auto" />
         </div>
         <div>
-          <h1 className="text-4xl font-bold">Zivvvo</h1>
           <p className="mt-3 text-lg text-ink-dim">
             Pass your Zimbabwe VID Class 2 provisional licence test with confidence.
           </p>
@@ -201,7 +200,7 @@ export default function App() {
       ) : (
         <div className="app-shell">
           <header className="px-4 py-3 border-b border-line flex items-center justify-between">
-            <span className="font-bold">Zivvvo</span>
+            <img src="/logo-wordmark.png" alt="Zivvvo" className="h-6 w-auto" />
             <div className="flex items-center gap-3">
               <SyncIndicator />
               {userName && (

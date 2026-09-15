@@ -68,6 +68,21 @@ function parseUrlEncoded(str) {
     const [key, ...rest] = pair.split("=");
     if (key) result[decodeURIComponent(key)] = decodeURIComponent(rest.join("="));
   }
+  // Paynow returns lowercase keys. Add PascalCase aliases for the fields we use.
+  const aliasMap = {
+    status: "Status",
+    browserurl: "BrowserUrl",
+    pollurl: "PollUrl",
+    hash: "Hash",
+    error: "Error",
+    reference: "Reference",
+    amount: "Amount",
+    paynowreference: "PaynowReference",
+    paymentmethod: "PaymentMethod",
+  };
+  for (const [low, pascal] of Object.entries(aliasMap)) {
+    if (result[low] !== undefined) result[pascal] = result[low];
+  }
   return result;
 }
 

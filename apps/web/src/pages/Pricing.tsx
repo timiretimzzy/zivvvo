@@ -5,7 +5,7 @@ import { getSupabaseUserId, getCurrentUser, getAccessToken } from "../auth";
 const PLANS = [
   { id: "monthly", price: "$2", period: "month", savings: null },
   { id: "sixmonth", price: "$8", period: "6 months", savings: "33%" },
-  { id: "yearly", price: "$12", period: "year", savings: "58%" },
+  { id: "yearly", price: "$12", period: "year", savings: "50%" },
 ] as const;
 
 export default function PricingPage() {
@@ -52,9 +52,17 @@ export default function PricingPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-bold">Upgrade to Premium</h1>
-        <p className="text-sm text-ink-dim">Unlock unlimited practice sessions.</p>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setTab("home")}
+          className="rounded-lg bg-surface-2 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          ←
+        </button>
+        <div>
+          <h1 className="text-xl font-bold">Upgrade to Premium</h1>
+          <p className="text-sm text-ink-dim">Unlock unlimited practice sessions.</p>
+        </div>
       </div>
 
       {plan === "premium" ? (

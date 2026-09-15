@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { defaultConfig, levelInfo } from "@zivvvo/learning-engine";
 import { useApp } from "../store";
 import { Card, Button } from "../ui";
 import { EXAM_GOALS, type GoalId } from "../onboarding";
 import { isSoundMuted, play, setSoundMuted } from "../sound";
+import { getCurrentUser } from "../auth";
 
 const GOAL_OPTIONS = EXAM_GOALS.filter((g) => g.enabled).map((g) => ({
   id: g.id as GoalId,
@@ -32,7 +34,7 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
   const resetDemo = useApp((s) => s.resetDemo);
   const plan = useApp((s) => s.plan);
   const planExpiresAt = useApp((s) => s.planExpiresAt);
-  const sessionsToday = useApp((s) => s.sessionsToday);
+  const engagement = useApp((s) => s.engagement);
   const setTab = useApp((s) => s.setTab);
 
   const [name, setName] = useState(learner?.name ?? "");
@@ -42,22 +44,31 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
   const [muted, setMuted] = useState(isSoundMuted());
   const [showReset, setShowReset] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [email, setEmail] = useState<string | null>(null);
+
+  useEffect(() => {
+    getCurrentUser().then((u) => setEmail(u?.email ?? null)).catch(() => {});
+  }, []);
 
   if (!learner) return null;
 
   const handleSave = async () => {
-    const minutesChanged = dailyMinutes !== learner.dailyMinutes;
-    await updateLearner(learner.id, {
-      name: name.trim() || "Learner",
-      examDate: parseDateInput(examDate),
-      dailyMinutes,
-      goal,
-    });
-    if (minutesChanged) {
-      useApp.getState().advanceEngagement({ type: "set-goal", minutes: dailyMinutes });
+    try {
+      const minutesChanged = dailyMinutes !== learner.dailyMinutes;
+      await updateLearner(learner.id, {
+        name: name.trim() || "Learner",
+        examDate: parseDateInput(examDate),
+        dailyMinutes,
+        goal,
+      });
+      if (minutesChanged) {
+        useApp.getState().advanceEngagement({ type: "set-goal", minutes: dailyMinutes });
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch {
+      // Error handled silently — user can retry
     }
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
   };
 
   const toggleSound = () => {
@@ -94,6 +105,9 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
           className="w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
           placeholder="Your name"
         />
+        {email && (
+          <p className="mt-2 text-xs text-ink-dim">{email}</p>
+        )}
       </Card>
 
       <Card title="Exam Date">
@@ -195,9 +209,9 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
           {plan === "free" && (
             <div className="flex items-center justify-between">
               <p className="text-xs text-ink-dim">
-                {(() => { const c = sessionsToday(); return c.diagnostic + c.other; })()} of 2 free sessions used today
+                Level {levelInfo(engagement.xp, defaultConfig).level} — {3 - levelInfo(engagement.xp, defaultConfig).level} level{3 - levelInfo(engagement.xp, defaultConfig).level === 1 ? "" : "s"} to premium
               </p>
-              <button onClick={() => setTab("pricing")} className="text-xs font-medium text-primary">
+              <button onClick={() => { onBack?.(); setTab("pricing"); }} className="text-xs font-medium text-primary">
                 Upgrade →
               </button>
             </div>

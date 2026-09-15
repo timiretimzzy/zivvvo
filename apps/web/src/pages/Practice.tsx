@@ -543,21 +543,10 @@ export default function PracticePage() {
       {paywall && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={() => setPaywall(false)}>
           <div className="w-full max-w-sm rounded-2xl bg-surface p-6 text-center" onClick={(e) => e.stopPropagation()}>
-            {plan === "free" && totalRemaining <= 0 ? (
-              <>
-                <h2 className="text-lg font-bold">Level 3 reached!</h2>
-                <p className="mt-2 text-sm text-ink-dim">
-                  You've hit Examiner-Proof level. Upgrade to keep unlimited practice and unlock mock exams.
-                </p>
-              </>
-            ) : (
-              <>
-                <h2 className="text-lg font-bold">Mock exams are Premium</h2>
-                <p className="mt-2 text-sm text-ink-dim">
-                  Upgrade to unlock mock exams and unlimited sessions.
-                </p>
-              </>
-            )}
+            <h2 className="text-lg font-bold">Upgrade to continue</h2>
+            <p className="mt-2 text-sm text-ink-dim">
+              You've reached Level {level} ({levelInfo(engagement.xp, defaultConfig).label}). Upgrade for unlimited practice and mock exams.
+            </p>
             <div className="mt-5 flex gap-3">
               <Button variant="ghost" onClick={() => setPaywall(false)}>Dismiss</Button>
               <Button onClick={() => { setPaywall(false); setTab("pricing"); }}>See Plans</Button>

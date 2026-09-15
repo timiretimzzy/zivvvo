@@ -74,7 +74,7 @@ export default function ProgressPage() {
           </div>
           {readiness.perceivedDelta !== null && (
             <p className="mt-1 text-xs text-ink-dim">
-              You rated yourself {Math.round(readiness.perceivedConfidence! * 100)}% — measured {Math.round(readiness.score * 100)}% ({readiness.perceivedDelta > 0 ? "better" : "lower"} than you thought).
+              You rated yourself {Math.round(readiness.perceivedConfidence! * 100)}% — measured {Math.round(readiness.score * 100)}% ({readiness.perceivedDelta > 0 ? "better" : readiness.perceivedDelta < 0 ? "lower" : "same as"} you thought).
             </p>
           )}
           <div className="mt-3 space-y-1.5">

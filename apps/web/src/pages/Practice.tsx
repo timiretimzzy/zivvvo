@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { defaultConfig } from "@zivvvo/learning-engine";
+import { defaultConfig, levelInfo } from "@zivvvo/learning-engine";
 import {
   buildSessionSummary,
   gradeQuestion,
@@ -381,7 +381,7 @@ export default function PracticePage() {
   const learnerId = useApp((s) => s.activeLearnerId);
   const plan = useApp((s) => s.plan);
   const canStartSession = useApp((s) => s.canStartSession);
-  const sessionsToday = useApp((s) => s.sessionsToday);
+  const engagement = useApp((s) => s.engagement);
   const setTab = useApp((s) => s.setTab);
   const [mode, setMode] = useState<PracticeMode>("quiz");
   const [paywall, setPaywall] = useState(false);
@@ -389,8 +389,7 @@ export default function PracticePage() {
   if (activeSession) return <SessionRunner session={activeSession} />;
   if (!learnerId) return null;
 
-  const counts = sessionsToday();
-  const totalRemaining = plan === "premium" ? Infinity : Math.max(0, 2 - counts.diagnostic - counts.other);
+  const level = levelInfo(engagement.xp, defaultConfig).level;
 
   const guard = (type: string, fn: () => void) => () => {
     if (!canStartSession(type)) { setPaywall(true); return; }
@@ -445,21 +444,17 @@ export default function PracticePage() {
     <div className="space-y-3">
       <ModeToggle mode={mode} onChange={setMode} />
 
-      {/* ── Free session limit banner ── */}
+      {/* ── Free tier banner ── */}
       {plan === "free" && (
         <div className="rounded-xl bg-surface-2 p-3 text-xs text-ink-dim flex items-center justify-between">
           <span>
-            Free: {totalRemaining} session{totalRemaining === 1 ? "" : "s"} left today
+            {level < 3
+              ? `Level ${level} — ${3 - level} level${3 - level === 1 ? "" : "s"} to unlock premium`
+              : "Level 3 — Upgrade to keep practicing"}
           </span>
-          {totalRemaining <= 0 ? (
-            <button onClick={() => setTab("pricing")} className="ml-2 text-primary font-medium">
-              Upgrade
-            </button>
-          ) : (
-            <button onClick={() => setTab("pricing")} className="ml-2 text-primary font-medium">
-              Upgrade
-            </button>
-          )}
+          <button onClick={() => setTab("pricing")} className="ml-2 text-primary font-medium">
+            Upgrade
+          </button>
         </div>
       )}
 
@@ -550,9 +545,9 @@ export default function PracticePage() {
           <div className="w-full max-w-sm rounded-2xl bg-surface p-6 text-center" onClick={(e) => e.stopPropagation()}>
             {plan === "free" && totalRemaining <= 0 ? (
               <>
-                <h2 className="text-lg font-bold">Free sessions used today</h2>
+                <h2 className="text-lg font-bold">Level 3 reached!</h2>
                 <p className="mt-2 text-sm text-ink-dim">
-                  You've used your 2 free sessions today. Upgrade for unlimited practice.
+                  You've hit Examiner-Proof level. Upgrade to keep unlimited practice and unlock mock exams.
                 </p>
               </>
             ) : (

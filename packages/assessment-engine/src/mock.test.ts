@@ -148,13 +148,13 @@ describe("mockScore", () => {
   it("passes at or above the pass mark", () => {
     const mock = { ...ZVID_MOCK_DEFAULT, questionCount: 30 };
     const attempts = [
-      ...Array.from({ length: 18 }, (_, i) => attempt(`q${i}`, true)),
-      ...Array.from({ length: 12 }, (_, i) => attempt(`x${i}`, false)),
+      ...Array.from({ length: 27 }, (_, i) => attempt(`q${i}`, true)),
+      ...Array.from({ length: 3 }, (_, i) => attempt(`x${i}`, false)),
     ];
     const s = mockScore(attempts, mock);
     expect(s.total).toBe(30);
-    expect(s.correct).toBe(18);
-    expect(s.score).toBeCloseTo(0.6);
+    expect(s.correct).toBe(27);
+    expect(s.score).toBeCloseTo(0.9);
     expect(s.passed).toBe(true);
   });
 

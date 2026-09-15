@@ -34,7 +34,7 @@ export interface DynamicMockConfig extends MockConfig {
 export const ZVID_MOCK_DEFAULT: MockConfig = {
   questionCount: 30,
   durationMin: 30,
-  passMark: 0.6,
+  passMark: 0.9,
   topicMix: "balanced",
 };
 

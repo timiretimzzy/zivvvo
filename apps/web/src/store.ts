@@ -249,12 +249,11 @@ export const useApp = create<AppStore>((set, get) => ({
   },
 
   startSession: async (s: LearningSession) => {
-    // Enforce session limits for free users
-    const { plan } = get();
+    // Enforce XP gate for free users
+    const { plan, engagement } = get();
     if (plan === "free") {
-      const counts = get().sessionsToday();
-      if (s.type === "diagnostic" && counts.diagnostic >= 1) return false;
-      if (s.type !== "diagnostic" && counts.other >= 1) return false;
+      const level = levelInfo(engagement.xp, defaultConfig).level;
+      if (level >= 3) return false;
     }
     await persistSession(s);
     set((state) => ({
@@ -352,13 +351,12 @@ export const useApp = create<AppStore>((set, get) => ({
     };
   },
 
-  /** Can this session type be started? Premium users have no limits. */
-  canStartSession: (type: string) => {
-    const { plan } = get();
+  /** Can this session type be started? Premium users have no limits. Free users are gated at Level 3. */
+  canStartSession: (_type: string) => {
+    const { plan, engagement } = get();
     if (plan === "premium") return true;
-    const counts = get().sessionsToday();
-    if (type === "diagnostic") return counts.diagnostic < 1;
-    return counts.other < 1;
+    const level = levelInfo(engagement.xp, defaultConfig).level;
+    return level < 3;
   },
 
   /** Set plan from Supabase sync or payment confirmation. */

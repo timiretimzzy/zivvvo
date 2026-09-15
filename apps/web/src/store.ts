@@ -112,8 +112,9 @@ export const useApp = create<AppStore>((set, get) => ({
     if (current.ready && current.currentSupabaseUserId === (targetUserId ?? null)) return;
     try {
     await initAuth();
-    // Always resolve the real auth user — initAuth populates cachedUser from session
+    // Re-check after await: user may have signed out during initAuth
     const supabaseUserId = authUserId ?? getSupabaseUserId();
+    if (get().currentSupabaseUserId && supabaseUserId && get().currentSupabaseUserId !== supabaseUserId) return;
     const previousUserId = get().currentSupabaseUserId;
     const userSwitched = supabaseUserId && previousUserId && supabaseUserId !== previousUserId;
 
@@ -121,6 +122,8 @@ export const useApp = create<AppStore>((set, get) => ({
     if (userSwitched) {
       console.log("[Zivvvo] User switch detected, clearing old data");
       await db.learners.clear();
+      // Re-check after await
+      if (get().currentSupabaseUserId && supabaseUserId && get().currentSupabaseUserId !== supabaseUserId) return;
       await db.attempts.clear();
       await db.reviews.clear();
       await db.sessions.clear();
@@ -138,6 +141,8 @@ export const useApp = create<AppStore>((set, get) => ({
       : learners.length > 0;
     if (isAuthenticated() && !hasMatchingLearner) {
       const cloud = await restoreFromCloud();
+      // Re-check after await
+      if (get().currentSupabaseUserId && supabaseUserId && get().currentSupabaseUserId !== supabaseUserId) return;
       if (cloud?.learner) {
         const learner = cloud.learner;
         if (supabaseUserId) learner.supabaseUserId = supabaseUserId;
@@ -162,6 +167,15 @@ export const useApp = create<AppStore>((set, get) => ({
 
     if (activeLearnerId && learners.some((l) => l.id === activeLearnerId)) {
       const data = await loadLearnerData(activeLearnerId);
+      // Re-check after await
+      if (get().currentSupabaseUserId && supabaseUserId && get().currentSupabaseUserId !== supabaseUserId) return;
+      // Clean up abandoned sessions older than 24h (never completed)
+      const dayAgo = Date.now() - DAY_MS;
+      const orphaned = data.sessions.filter((s) => s.completedAt === null && s.createdAt < dayAgo);
+      if (orphaned.length > 0) {
+        await db.sessions.bulkDelete(orphaned.map((s) => s.id));
+        data.sessions = data.sessions.filter((s) => !orphaned.includes(s));
+      }
       const learner = learners.find((l) => l.id === activeLearnerId);
       const engagement = data.engagement ?? initialEngagementState(learner?.dailyMinutes);
       set({ ready: true, currentSupabaseUserId: supabaseUserId ?? null, learners, activeLearnerId, ...data, engagement, tab: "home", plan: learner?.plan ?? "free", planExpiresAt: learner?.planExpiresAt });
@@ -439,6 +453,41 @@ export const useApp = create<AppStore>((set, get) => ({
     });
   },
 }));
+
+// ─── Periodic plan expiry detection ─────────────────────────────────────────
+// Checks plan status on visibility change (tab focus) and every 5 minutes.
+// If a server-side payment was made or plan expired, the client picks it up
+// without requiring a page reload.
+let planCheckTimer: ReturnType<typeof setInterval> | null = null;
+
+function checkPlanExpiry() {
+  const state = useApp.getState();
+  if (!state.ready || !isAuthenticated()) return;
+  fetchPlanStatus().then((ps) => {
+    const cur = useApp.getState();
+    if (!cur.ready) return;
+    if (ps && ps.plan !== cur.plan) {
+      console.log("[Zivvvo] Plan changed:", cur.plan, "->", ps.plan);
+      useApp.setState({ plan: ps.plan, planExpiresAt: ps.planExpiresAt });
+      if (cur.activeLearnerId) {
+        void cur.updateLearner(cur.activeLearnerId, { plan: ps.plan, planExpiresAt: ps.planExpiresAt });
+      }
+    }
+  }).catch(() => {});
+}
+
+// Start on first init
+const unsubInit = useApp.subscribe(
+  (s) => s.ready,
+  (ready) => {
+    if (!ready) return;
+    unsubInit();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") checkPlanExpiry();
+    });
+    planCheckTimer = setInterval(checkPlanExpiry, 5 * 60 * 1000);
+  },
+);
 
 // After a successful pull, absorb server attempts for the active learner into
 // memory so the UI reflects fetched data without a reload. Rows for other

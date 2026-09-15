@@ -13,6 +13,7 @@ import {
   DEFAULT_PRIORITIES_V2,
   defaultConfig,
   detectWeakness,
+  classifyPattern,
   isDue,
   masteryBy,
   getNextBestActivity,
@@ -79,7 +80,16 @@ export function weaknesses(attempts: AttemptEvent[]): { signal: ReturnType<typeo
     const stat = masteryBy(topicAttempts, () => t.id, defaultConfig)[0];
     if (!stat) continue;
     const signal = detectWeakness(stat, defaultConfig, Date.now());
-    if (signal.kind !== "none") out.push({ signal, topic: { id: t.id, label: t.label } });
+    if (signal.kind === "none") continue;
+    // Upgrade "early" to recurring/deteriorating when pattern analysis agrees
+    if (signal.kind === "early" && topicAttempts.length > 0) {
+      const pattern = classifyPattern(topicAttempts.map((a) => ({ isCorrect: a.correct, ts: a.ts })), defaultConfig);
+      if (pattern.kind !== "none") {
+        out.push({ signal: { ...signal, kind: pattern.kind, reasons: pattern.reasons }, topic: { id: t.id, label: t.label } });
+        continue;
+      }
+    }
+    out.push({ signal, topic: { id: t.id, label: t.label } });
   }
   return out;
 }

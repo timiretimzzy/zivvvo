@@ -144,6 +144,7 @@ export default function HomePage() {
     if (!learnerId) return;
     const ts = dateInput ? new Date(`${dateInput}T00:00:00`).getTime() : NaN;
     if (Number.isNaN(ts) || ts <= 0) return;
+    if (ts < Date.now()) return;
     void updateLearner(learnerId, { examDate: ts });
   };
 

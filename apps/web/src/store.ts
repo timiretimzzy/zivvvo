@@ -382,11 +382,14 @@ export const useApp = create<AppStore>((set, get) => ({
     const prevLevel = levelInfo(get().engagement.xp, defaultConfig).level;
     const next = reduceEngagement(get().engagement, event, defaultConfig);
     const nextLevel = levelInfo(next.xp, defaultConfig).level;
-    void persistEngagement(learnerId, next);
     set({ engagement: next });
     if (nextLevel > prevLevel && !isSoundMuted()) {
       playSound("levelUp");
     }
+    // Persist to IDB — if it fails, retry once after a short delay
+    persistEngagement(learnerId, next).catch(() => {
+      setTimeout(() => { void persistEngagement(learnerId, get().engagement); }, 1000);
+    });
     pushToCloud();
   },
 

@@ -3,6 +3,7 @@ import { useApp } from "../store";
 import { learnerState, smartTopicSession } from "../engine";
 import { learnPath } from "../learnPath";
 import { Card, Button, Meter, Tag } from "../ui";
+import { play, vibrate } from "../sound";
 
 export default function LearnPage() {
   const attempts = useApp((s) => s.attempts);
@@ -30,6 +31,8 @@ export default function LearnPage() {
 
   const practice = (topicId: string) => {
     if (!canStartSession("smart")) { setPaywall(true); return; }
+    play("start");
+    vibrate(20);
     const r = smartTopicSession(topicId, attempts, activeLearnerId ?? "");
     void startSession(r.session);
   };

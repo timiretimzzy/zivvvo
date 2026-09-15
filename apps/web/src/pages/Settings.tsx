@@ -44,6 +44,8 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
   const [muted, setMuted] = useState(isSoundMuted());
   const [showReset, setShowReset] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,6 +55,8 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
   if (!learner) return null;
 
   const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
     try {
       const minutesChanged = dailyMinutes !== learner.dailyMinutes;
       await updateLearner(learner.id, {
@@ -68,6 +72,8 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
       setTimeout(() => setSaved(false), 1500);
     } catch {
       // Error handled silently — user can retry
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -79,6 +85,8 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
   };
 
   const handleReset = async () => {
+    if (resetting) return;
+    setResetting(true);
     await resetDemo();
   };
 
@@ -114,6 +122,7 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
         <input
           type="date"
           value={examDate}
+          min={new Date().toISOString().split("T")[0]}
           onChange={(e) => setExamDate(e.target.value)}
           className="w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-primary"
         />
@@ -171,8 +180,8 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
           <div className="space-y-3">
             <p className="text-sm text-bad">This will erase all your progress. This cannot be undone.</p>
             <div className="flex gap-2">
-              <Button variant="danger" onClick={handleReset}>
-                Confirm Reset
+              <Button variant="danger" onClick={handleReset} disabled={resetting}>
+                {resetting ? "Resetting…" : "Confirm Reset"}
               </Button>
               <Button variant="ghost" onClick={() => setShowReset(false)}>
                 Cancel
@@ -186,8 +195,8 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
         )}
       </Card>
 
-      <Button onClick={handleSave}>
-        {saved ? "✓ Saved" : "Save Changes"}
+      <Button onClick={handleSave} disabled={saving}>
+        {saved ? "✓ Saved" : saving ? "Saving…" : "Save Changes"}
       </Button>
 
       <Card title="Subscription">

@@ -82,10 +82,13 @@ function SessionRunner({ session }: { session: LearningSession }) {
 
   const [error, setError] = useState<string | null>(null);
   const checkingRef = useRef(false);
+  const answeringRef = useRef(false);
 
   const onConfidence = (confidence: Confidence) => {
+    if (answeringRef.current) return;
+    answeringRef.current = true;
     play("select");
-    if (!question) return;
+    if (!question) { answeringRef.current = false; return; }
     const durationMs = Math.max(250, Date.now() - startedAt.current);
     void recordAnswer(question, selected, confidence, durationMs).then(() => {
       if (!mountedRef.current) return;
@@ -100,12 +103,14 @@ function SessionRunner({ session }: { session: LearningSession }) {
     }).catch((err) => {
       console.error("[Zivvvo] recordAnswer failed:", err);
       if (mountedRef.current) setError("Failed to record answer. Please try again.");
-    });
+    }).finally(() => { answeringRef.current = false; });
   };
 
   const onSkip = () => {
+    if (answeringRef.current) return;
+    answeringRef.current = true;
     play("select");
-    if (!question) return;
+    if (!question) { answeringRef.current = false; return; }
     const durationMs = Math.max(250, Date.now() - startedAt.current);
     void recordAnswer(question, [], "guess", durationMs).then(() => {
       if (!mountedRef.current) return;
@@ -120,7 +125,7 @@ function SessionRunner({ session }: { session: LearningSession }) {
     }).catch((err) => {
       console.error("[Zivvvo] recordAnswer failed:", err);
       if (mountedRef.current) setError("Failed to record answer. Please try again.");
-    });
+    }).finally(() => { answeringRef.current = false; });
   };
 
   const summary = useMemo(() => {
@@ -269,7 +274,7 @@ function SessionRunner({ session }: { session: LearningSession }) {
             <p className="text-sm text-ink-dim mb-2">How confident were you?</p>
             <div className="grid grid-cols-3 gap-2">
               {(["sure", "unsure", "guess"] as Confidence[]).map((c) => (
-                <Button key={c} variant="ghost" onClick={() => onConfidence(c)} className="!p-2">
+                <Button key={c} variant="ghost" onClick={() => onConfidence(c)} className="!p-2" disabled={answeringRef.current}>
                   {c}
                 </Button>
               ))}
@@ -299,7 +304,8 @@ function SessionRunner({ session }: { session: LearningSession }) {
           {!isMock && (
             <button
               onClick={onSkip}
-              className="w-full py-2 text-xs text-ink-dim hover:text-ink transition"
+              disabled={answeringRef.current}
+              className="w-full py-2 text-xs text-ink-dim hover:text-ink transition disabled:opacity-50"
             >
               Skip this one
             </button>
@@ -385,6 +391,7 @@ export default function PracticePage() {
   const setTab = useApp((s) => s.setTab);
   const [mode, setMode] = useState<PracticeMode>("quiz");
   const [paywall, setPaywall] = useState(false);
+  const startingRef = useRef(false);
 
   if (activeSession) return <SessionRunner session={activeSession} />;
   if (!learnerId) return null;
@@ -392,8 +399,11 @@ export default function PracticePage() {
   const level = levelInfo(engagement.xp, defaultConfig).level;
 
   const guard = (type: string, fn: () => void) => () => {
+    if (startingRef.current) return;
     if (!canStartSession(type)) { setPaywall(true); return; }
+    startingRef.current = true;
     fn();
+    setTimeout(() => { startingRef.current = false; }, 300);
   };
 
   const launchSmart = guard("smart", () => {
@@ -423,7 +433,14 @@ export default function PracticePage() {
     if (r) void startSession(r.session);
   });
   const launchMock = plan === "premium"
-    ? () => { play("start"); vibrate(20); const r = mockSession(attempts, learnerId!); void startSession(r.session); }
+    ? () => {
+        if (startingRef.current) return;
+        startingRef.current = true;
+        play("start"); vibrate(20);
+        const r = mockSession(attempts, learnerId!);
+        void startSession(r.session);
+        setTimeout(() => { startingRef.current = false; }, 300);
+      }
     : () => setPaywall(true);
 
   const weak = topWeakness(attempts);

@@ -64,12 +64,19 @@ function PaymentReturnPage() {
   const params = new URLSearchParams(window.location.search);
   const ref = params.get("ref");
   const timers = useRef<number[]>([]);
+  const retries = useRef(0);
+  const MAX_RETRIES = 30;
 
   useEffect(() => {
     return () => { timers.current.forEach(clearTimeout); };
   }, []);
 
   const schedulePoll = useCallback((delayMs: number) => {
+    retries.current++;
+    if (retries.current > MAX_RETRIES) {
+      setStatus("failed");
+      return;
+    }
     const id = window.setTimeout(poll, delayMs);
     timers.current.push(id);
   }, []);
@@ -81,10 +88,10 @@ function PaymentReturnPage() {
       const res = await fetch(`/api/paynow/status?ref=${encodeURIComponent(ref)}`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
+      if (res.status === 401) { setStatus("failed"); return; }
       const data = await res.json();
       if (data.status === "paid") {
         setStatus("paid");
-        // Fetch real plan + expiry from Supabase cloud
         const ps = await fetchPlanStatus().catch(() => null);
         setPlan("premium", ps?.planExpiresAt);
         const id = window.setTimeout(() => setTab("home"), 3000);

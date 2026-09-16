@@ -466,8 +466,12 @@ function checkPlanExpiry() {
   fetchPlanStatus().then((ps) => {
     const cur = useApp.getState();
     if (!cur.ready) return;
-    if (ps && ps.plan !== cur.plan) {
-      console.log("[Zivvvo] Plan changed:", cur.plan, "->", ps.plan);
+    // Detect plan tier change OR expiry date change (handles renewals)
+    const tierChanged = ps && ps.plan !== cur.plan;
+    const expiryChanged = ps && ps.planExpiresAt && cur.planExpiresAt &&
+      Math.abs(ps.planExpiresAt - cur.planExpiresAt) > 60000; // 1 min tolerance for clock drift
+    if (tierChanged || expiryChanged) {
+      console.log("[Zivvvo] Plan updated:", cur.plan, "->", ps.plan);
       useApp.setState({ plan: ps.plan, planExpiresAt: ps.planExpiresAt });
       if (cur.activeLearnerId) {
         void cur.updateLearner(cur.activeLearnerId, { plan: ps.plan, planExpiresAt: ps.planExpiresAt });

@@ -43,10 +43,12 @@ const PLANS = {
   monthly:  { amount: 2.00,  months: 1,  label: "Monthly" },
   sixmonth: { amount: 8.00,  months: 6,  label: "6 Months" },
   yearly:   { amount: 12.00, months: 12, label: "Yearly" },
-  test10:   { amount: 0.10,  months: 1,  label: "Test ($0.10)" },
 };
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Test plan only available in non-production
+if (process.env.NODE_ENV !== "production") {
+  PLANS.test10 = { amount: 0.10, months: 1, label: "Test ($0.10)" };
+}
 
 function generateHash(values, key) {
   const concatenated = values.join("") + key;
@@ -63,28 +65,34 @@ function calculateExpiry(months) {
   return d.getTime();
 }
 
-function parseUrlEncoded(str) {
-  const result = {};
-  for (const pair of str.split("&")) {
-    const [key, ...rest] = pair.split("=");
-    if (key) result[decodeURIComponent(key)] = decodeURIComponent(rest.join("="));
+// Activate plan for a user — idempotent, handles both first-time and renewal
+async function activatePlan(userId, months) {
+  const expiresAt = calculateExpiry(months);
+  const { data: ls } = await supabase
+    .from("learner_state")
+    .select("plan, plan_expires_at")
+    .eq("user_id", userId)
+    .single();
+
+  // If already premium with a future expiry, extend from that expiry (renewal)
+  let finalExpiry = expiresAt;
+  if (ls && ls.plan === "premium" && ls.plan_expires_at && ls.plan_expires_at > Date.now()) {
+    // Extend from current expiry, not from now
+    const base = new Date(ls.plan_expires_at);
+    base.setMonth(base.getMonth() + months);
+    finalExpiry = base.getTime();
   }
-  // Paynow returns lowercase keys. Add PascalCase aliases for the fields we use.
-  const aliasMap = {
-    status: "Status",
-    browserurl: "BrowserUrl",
-    pollurl: "PollUrl",
-    hash: "Hash",
-    error: "Error",
-    reference: "Reference",
-    amount: "Amount",
-    paynowreference: "PaynowReference",
-    paymentmethod: "PaymentMethod",
-  };
-  for (const [low, pascal] of Object.entries(aliasMap)) {
-    if (result[low] !== undefined) result[pascal] = result[low];
-  }
-  return result;
+
+  const { error } = await supabase
+    .from("learner_state")
+    .update({
+      plan: "premium",
+      plan_expires_at: finalExpiry,
+      updated_at: Date.now(),
+    })
+    .eq("user_id", userId);
+
+  return { error, expiresAt: finalExpiry };
 }
 
 // Simple in-memory rate limiter
@@ -135,8 +143,8 @@ async function verifyAuth(req, res, next) {
 
 const app = express();
 app.use(cors({ origin: ["https://www.zivvvo.co.zw", "https://zivvvo.co.zw"] }));
-app.use(express.urlencoded({ extended: false }));
-app.use(express.json());
+app.use(express.urlencoded({ extended: false, limit: "10kb" }));
+app.use(express.json({ limit: "10kb" }));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
@@ -194,10 +202,8 @@ app.post("/api/paynow/initiate", rateLimit(10), verifyAuth, async (req, res) => 
     });
 
     const raw = await paynowRes.text();
-    // Use URLSearchParams directly (matches stacked-game working approach)
     const parsed = new URLSearchParams(raw);
     const data = Object.fromEntries(parsed.entries());
-    // Add lowercase aliases for consistent access
     if (data.status !== undefined) data.Status = data.status;
     if (data.browserurl !== undefined) data.BrowserUrl = data.browserurl;
     if (data.pollurl !== undefined) data.PollUrl = data.pollurl;
@@ -220,6 +226,8 @@ app.post("/api/paynow/initiate", rateLimit(10), verifyAuth, async (req, res) => 
         expectedHash,
         gotHash: data.Hash,
       });
+      // Mark payment as failed so it doesn't stay pending forever
+      await supabase.from("payments").update({ status: "failed", updated_at: new Date().toISOString() }).eq("reference", reference);
       return res.status(502).json({ error: "Invalid response hash" });
     }
 
@@ -240,8 +248,11 @@ app.post("/api/paynow/initiate", rateLimit(10), verifyAuth, async (req, res) => 
 app.post("/api/paynow/result", async (req, res) => {
   try {
     const raw = req.body;
-    // express.urlencoded preserves field insertion order via qs.
-    // Build hash values from all received fields EXCEPT hash, in received order.
+
+    if (!raw) {
+      return res.status(400).send("Empty body");
+    }
+
     const fields = {};
     const hashValues = [];
     if (typeof raw === "string") {
@@ -250,7 +261,6 @@ app.post("/api/paynow/result", async (req, res) => {
         if (k !== "hash") hashValues.push(v);
       }
     } else {
-      // Already parsed by global middleware — iterate in insertion order
       for (const [k, v] of Object.entries(raw)) {
         fields[k] = String(v);
         if (k !== "hash") hashValues.push(String(v));
@@ -265,7 +275,6 @@ app.post("/api/paynow/result", async (req, res) => {
       return res.status(400).send("Missing fields");
     }
 
-    // ALWAYS verify hash — never skip
     const expectedHash = generateHash(hashValues, PAYNOW_KEY);
     if (!paynowHash || paynowHash.toUpperCase() !== expectedHash.toUpperCase()) {
       console.error("Hash mismatch/rejected on result for", reference, "\nReceived:", hashValues, "\nExpected:", expectedHash);
@@ -283,8 +292,16 @@ app.post("/api/paynow/result", async (req, res) => {
       return res.status(404).send("Not found");
     }
 
-    // Idempotency: skip if already paid
+    // Idempotency: if already paid, still attempt activation (in case first
+    // webhook marked paid but activation failed before this retry).
     if (payment.status === "paid") {
+      if (status === "Paid") {
+        const planInfo = PLANS[payment.plan];
+        if (planInfo) {
+          const { error: actErr } = await activatePlan(payment.user_id, planInfo.months);
+          if (actErr) console.error("Retry activation failed:", actErr.message);
+        }
+      }
       return res.status(200).send("OK");
     }
 
@@ -296,9 +313,7 @@ app.post("/api/paynow/result", async (req, res) => {
       }
 
       // Step 1: Mark payment as paid FIRST (idempotent — re-delivered webhooks
-      // find it already paid and are acked at line 287). This is critical:
-      // if we tried to update learner_state first and it failed, the payment
-      // would stay "pending" forever and the client would spin indefinitely.
+      // find it already paid and retry activation above).
       const { error: payErr } = await supabase
         .from("payments")
         .update({ status: "paid", updated_at: new Date().toISOString() })
@@ -308,23 +323,12 @@ app.post("/api/paynow/result", async (req, res) => {
         return res.status(500).send("Failed to record payment");
       }
 
-      // Step 2: Activate the plan in learner_state.
-      // updated_at is bigint (epoch ms) in this table.
-      const expiresAt = calculateExpiry(planInfo.months);
-      const { error: updateErr } = await supabase
-        .from("learner_state")
-        .update({
-          plan: "premium",
-          plan_expires_at: expiresAt,
-          updated_at: Date.now(),
-        })
-        .eq("user_id", payment.user_id);
+      // Step 2: Activate the plan
+      const { error: updateErr, expiresAt } = await activatePlan(payment.user_id, planInfo.months);
 
       if (updateErr) {
-        // Payment is already marked paid — the status endpoint will retry
-        // activation as a fallback. Log loudly so we can investigate.
         console.error("CRITICAL: Plan activation failed after payment marked paid:", updateErr,
-          { user_id: payment.user_id, reference, expiresAt });
+          { user_id: payment.user_id, reference });
       } else {
         console.log(`Plan activated: ${payment.user_id} -> premium until ${new Date(expiresAt).toISOString()}`);
       }
@@ -344,8 +348,7 @@ app.post("/api/paynow/result", async (req, res) => {
 });
 
 // Check transaction status (requires auth, can only check own)
-// If payment is "paid" but plan wasn't activated (webhook failure fallback),
-// attempt activation here so the user is never stuck.
+// Fallback: if payment is "paid" but plan wasn't activated, retry here.
 app.get("/api/paynow/status", rateLimit(30), verifyAuth, async (req, res) => {
   try {
     const { ref } = req.query;
@@ -363,23 +366,12 @@ app.get("/api/paynow/status", rateLimit(30), verifyAuth, async (req, res) => {
     }
 
     // Fallback: if payment is paid but plan might not be activated,
-    // try (re)activating. Idempotent — no harm if already premium.
+    // try (re)activating. Always attempts — handles first-time AND renewals.
     if (payment.status === "paid") {
       const planInfo = PLANS[payment.plan];
       if (planInfo) {
-        const expiresAt = calculateExpiry(planInfo.months);
-        const { data: ls } = await supabase
-          .from("learner_state")
-          .select("plan")
-          .eq("user_id", payment.user_id)
-          .single();
-        if (ls && ls.plan === "free") {
-          console.log(`Fallback activation: ${payment.user_id} (payment ${ref} was paid but plan not set)`);
-          await supabase
-            .from("learner_state")
-            .update({ plan: "premium", plan_expires_at: expiresAt, updated_at: Date.now() })
-            .eq("user_id", payment.user_id);
-        }
+        const { error: actErr } = await activatePlan(payment.user_id, planInfo.months);
+        if (actErr) console.error("Status fallback activation failed:", actErr.message);
       }
     }
 

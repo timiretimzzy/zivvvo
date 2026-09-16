@@ -114,16 +114,6 @@ export default function PricingPage({ onBack }: { onBack?: () => void }) {
             ))}
           </div>
 
-          <button
-            onClick={() => handleUpgrade("test10")}
-            disabled={loading !== null}
-            className="w-full rounded-2xl border border-dashed border-warn/40 bg-warn/5 p-3 text-center transition active:scale-[0.97] disabled:opacity-40"
-          >
-            <span className="text-sm font-semibold text-warn">Test Payment — $0.10</span>
-            <span className="mt-1 block text-xs text-ink-dim">Verify Paynow works before going live</span>
-            {loading === "test10" && <span className="mt-1 block text-xs text-warn">Redirecting…</span>}
-          </button>
-
           <div className="rounded-2xl border border-line bg-surface p-4">
             <h2 className="text-sm font-semibold">Premium includes</h2>
             <ul className="mt-2 space-y-2 text-sm text-ink-dim">

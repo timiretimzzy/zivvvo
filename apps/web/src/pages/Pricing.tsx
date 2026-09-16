@@ -8,7 +8,7 @@ const PLANS = [
   { id: "yearly", price: "$12", period: "year", savings: "50%" },
 ] as const;
 
-export default function PricingPage() {
+export default function PricingPage({ onBack }: { onBack?: () => void }) {
   const plan = useApp((s) => s.plan);
   const planExpiresAt = useApp((s) => s.planExpiresAt);
   const [loading, setLoading] = useState<string | null>(null);
@@ -53,12 +53,14 @@ export default function PricingPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <button
-          onClick={() => setTab("home")}
-          className="rounded-lg bg-surface-2 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          ←
-        </button>
+        {onBack && (
+          <button
+            onClick={onBack}
+            className="rounded-lg bg-surface-2 px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          >
+            ←
+          </button>
+        )}
         <div>
           <h1 className="text-xl font-bold">Upgrade to Premium</h1>
           <p className="text-sm text-ink-dim">Unlock unlimited practice sessions.</p>
@@ -111,6 +113,16 @@ export default function PricingPage() {
               </button>
             ))}
           </div>
+
+          <button
+            onClick={() => handleUpgrade("test10")}
+            disabled={loading !== null}
+            className="w-full rounded-2xl border border-dashed border-warn/40 bg-warn/5 p-3 text-center transition active:scale-[0.97] disabled:opacity-40"
+          >
+            <span className="text-sm font-semibold text-warn">Test Payment — $0.10</span>
+            <span className="mt-1 block text-xs text-ink-dim">Verify Paynow works before going live</span>
+            {loading === "test10" && <span className="mt-1 block text-xs text-warn">Redirecting…</span>}
+          </button>
 
           <div className="rounded-2xl border border-line bg-surface p-4">
             <h2 className="text-sm font-semibold">Premium includes</h2>

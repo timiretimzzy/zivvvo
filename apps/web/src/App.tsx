@@ -329,7 +329,7 @@ export default function App() {
             ) : showSettings ? (
               <SettingsPage onBack={openSettings} />
             ) : tab === "pricing" ? (
-              <PricingPage />
+              <PricingPage onBack={() => setTab("home")} />
             ) : tab === "home" ? (
               <HomePage />
             ) : tab === "learn" ? (

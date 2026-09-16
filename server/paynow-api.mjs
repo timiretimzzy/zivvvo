@@ -43,6 +43,7 @@ const PLANS = {
   monthly:  { amount: 2.00,  months: 1,  label: "Monthly" },
   sixmonth: { amount: 8.00,  months: 6,  label: "6 Months" },
   yearly:   { amount: 12.00, months: 12, label: "Yearly" },
+  test10:   { amount: 0.10,  months: 1,  label: "Test ($0.10)" },
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

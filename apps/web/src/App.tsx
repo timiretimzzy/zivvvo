@@ -94,7 +94,7 @@ function PaymentReturnPage() {
         setStatus("paid");
         const ps = await fetchPlanStatus().catch(() => null);
         setPlan("premium", ps?.planExpiresAt);
-        const id = window.setTimeout(() => setTab("home"), 3000);
+        const id = window.setTimeout(() => { window.location.replace("/"); }, 1500);
         timers.current.push(id);
       } else if (data.status === "pending") {
         schedulePoll(2000);
@@ -104,7 +104,7 @@ function PaymentReturnPage() {
     } catch {
       schedulePoll(3000);
     }
-  }, [ref, setPlan, setTab, schedulePoll]);
+  }, [ref, setPlan, schedulePoll]);
 
   useEffect(() => { poll(); }, [poll]);
 
@@ -128,7 +128,7 @@ function PaymentReturnPage() {
           <div className="mb-4 text-5xl">✕</div>
           <h2 className="text-xl font-bold text-bad">Payment not confirmed</h2>
           <p className="mt-2 text-sm text-ink-dim">Something went wrong. Please try again or contact support.</p>
-          <button onClick={() => setTab("home")} className="mt-4 text-sm text-primary font-medium">
+          <button onClick={() => window.location.replace("/")} className="mt-4 text-sm text-primary font-medium">
             Back to app
           </button>
         </>

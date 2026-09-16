@@ -193,7 +193,15 @@ app.post("/api/paynow/initiate", rateLimit(10), verifyAuth, async (req, res) => 
     });
 
     const raw = await paynowRes.text();
-    const data = parseUrlEncoded(raw);
+    // Use URLSearchParams directly (matches stacked-game working approach)
+    const parsed = new URLSearchParams(raw);
+    const data = Object.fromEntries(parsed.entries());
+    // Add lowercase aliases for consistent access
+    if (data.status !== undefined) data.Status = data.status;
+    if (data.browserurl !== undefined) data.BrowserUrl = data.browserurl;
+    if (data.pollurl !== undefined) data.PollUrl = data.pollurl;
+    if (data.hash !== undefined) data.Hash = data.hash;
+    if (data.error !== undefined) data.Error = data.error;
 
     if (data.Status !== "Ok") {
       console.error("Paynow initiate failed:", data);
@@ -201,10 +209,16 @@ app.post("/api/paynow/initiate", rateLimit(10), verifyAuth, async (req, res) => 
       return res.status(502).json({ error: data.Error || "Payment initiation failed" });
     }
 
-    const responseHashValues = [data.BrowserUrl, data.PollUrl, data.Status];
+    const responseHashValues = [data.Status, data.BrowserUrl, data.PollUrl];
     const expectedHash = generateHash(responseHashValues, PAYNOW_KEY);
     if (data.Hash !== expectedHash) {
-      console.error("Hash mismatch on initiate response");
+      console.error("Hash mismatch on initiate response:", {
+        status: data.Status,
+        browserUrl: data.BrowserUrl?.substring(0, 60),
+        pollUrl: data.PollUrl?.substring(0, 60),
+        expectedHash,
+        gotHash: data.Hash,
+      });
       return res.status(502).json({ error: "Invalid response hash" });
     }
 
@@ -225,32 +239,35 @@ app.post("/api/paynow/initiate", rateLimit(10), verifyAuth, async (req, res) => 
 app.post("/api/paynow/result", async (req, res) => {
   try {
     const raw = req.body;
+    // express.urlencoded preserves field insertion order via qs.
+    // Build hash values from all received fields EXCEPT hash, in received order.
     const fields = {};
+    const hashValues = [];
     if (typeof raw === "string") {
-      Object.assign(fields, parseUrlEncoded(raw));
+      for (const [k, v] of new URLSearchParams(raw)) {
+        fields[k] = v;
+        if (k !== "hash") hashValues.push(v);
+      }
     } else {
-      Object.assign(fields, raw);
+      // Already parsed by global middleware — iterate in insertion order
+      for (const [k, v] of Object.entries(raw)) {
+        fields[k] = String(v);
+        if (k !== "hash") hashValues.push(String(v));
+      }
     }
 
-    const reference = fields.Reference;
-    const status = fields.Status;
-    const paynowHash = fields.Hash;
+    const reference = fields.Reference || fields.reference;
+    const status = fields.Status || fields.status;
+    const paynowHash = fields.Hash || fields.hash;
 
     if (!reference || !status) {
       return res.status(400).send("Missing fields");
     }
 
     // ALWAYS verify hash — never skip
-    const hashValues = [
-      fields.Reference,
-      fields.Amount || "",
-      fields.PaynowReference || "",
-      fields.PaymentMethod || "",
-      status,
-    ];
     const expectedHash = generateHash(hashValues, PAYNOW_KEY);
-    if (!paynowHash || paynowHash !== expectedHash) {
-      console.error("Hash mismatch/rejected on result for", reference);
+    if (!paynowHash || paynowHash.toUpperCase() !== expectedHash.toUpperCase()) {
+      console.error("Hash mismatch/rejected on result for", reference, "\nReceived:", hashValues, "\nExpected:", expectedHash);
       return res.status(403).send("Invalid hash");
     }
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useApp, type Tab } from "./store";
 import { useSync } from "./sync";
-import { syncManager } from "./sync-supabase";
+import { syncManager, fetchPlanStatus } from "./sync-supabase";
 import { OnboardingFlow } from "./OnboardingFlow";
 import { isSoundMuted, play, setSoundMuted } from "./sound";
 import { onAuthStateChange, signInWithGoogle, getAccessToken } from "./auth";
@@ -84,7 +84,9 @@ function PaymentReturnPage() {
       const data = await res.json();
       if (data.status === "paid") {
         setStatus("paid");
-        setPlan("premium");
+        // Fetch real plan + expiry from Supabase cloud
+        const ps = await fetchPlanStatus().catch(() => null);
+        setPlan("premium", ps?.planExpiresAt);
         const id = window.setTimeout(() => setTab("home"), 3000);
         timers.current.push(id);
       } else if (data.status === "pending") {

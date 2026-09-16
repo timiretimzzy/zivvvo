@@ -60,7 +60,7 @@ function generateReference() {
 function calculateExpiry(months) {
   const d = new Date();
   d.setMonth(d.getMonth() + months);
-  return d.toISOString();
+  return d.getTime();
 }
 
 function parseUrlEncoded(str) {
@@ -295,29 +295,39 @@ app.post("/api/paynow/result", async (req, res) => {
         return res.status(500).send("Unknown plan");
       }
 
-      const expiresAt = calculateExpiry(planInfo.months);
+      // Step 1: Mark payment as paid FIRST (idempotent — re-delivered webhooks
+      // find it already paid and are acked at line 287). This is critical:
+      // if we tried to update learner_state first and it failed, the payment
+      // would stay "pending" forever and the client would spin indefinitely.
+      const { error: payErr } = await supabase
+        .from("payments")
+        .update({ status: "paid", updated_at: new Date().toISOString() })
+        .eq("reference", reference);
+      if (payErr) {
+        console.error("Failed to mark payment paid:", payErr);
+        return res.status(500).send("Failed to record payment");
+      }
 
+      // Step 2: Activate the plan in learner_state.
+      // updated_at is bigint (epoch ms) in this table.
+      const expiresAt = calculateExpiry(planInfo.months);
       const { error: updateErr } = await supabase
         .from("learner_state")
         .update({
           plan: "premium",
           plan_expires_at: expiresAt,
-          updated_at: new Date().toISOString(),
+          updated_at: Date.now(),
         })
         .eq("user_id", payment.user_id);
 
       if (updateErr) {
-        console.error("Update learner_state error:", updateErr);
-        return res.status(500).send("Failed to activate plan");
+        // Payment is already marked paid — the status endpoint will retry
+        // activation as a fallback. Log loudly so we can investigate.
+        console.error("CRITICAL: Plan activation failed after payment marked paid:", updateErr,
+          { user_id: payment.user_id, reference, expiresAt });
+      } else {
+        console.log(`Plan activated: ${payment.user_id} -> premium until ${new Date(expiresAt).toISOString()}`);
       }
-
-      const { error: payErr } = await supabase
-        .from("payments")
-        .update({ status: "paid", updated_at: new Date().toISOString() })
-        .eq("reference", reference);
-      if (payErr) console.error("Failed to update payment status:", payErr);
-
-      console.log(`Plan activated: ${payment.user_id} -> premium until ${expiresAt}`);
     } else {
       const { error: cancelErr } = await supabase
         .from("payments")
@@ -334,6 +344,8 @@ app.post("/api/paynow/result", async (req, res) => {
 });
 
 // Check transaction status (requires auth, can only check own)
+// If payment is "paid" but plan wasn't activated (webhook failure fallback),
+// attempt activation here so the user is never stuck.
 app.get("/api/paynow/status", rateLimit(30), verifyAuth, async (req, res) => {
   try {
     const { ref } = req.query;
@@ -341,13 +353,34 @@ app.get("/api/paynow/status", rateLimit(30), verifyAuth, async (req, res) => {
 
     const { data: payment, error } = await supabase
       .from("payments")
-      .select("status, plan, amount")
+      .select("status, plan, amount, user_id")
       .eq("reference", ref)
       .eq("user_id", req.authUserId)
       .single();
 
     if (error || !payment) {
       return res.status(404).json({ error: "Transaction not found" });
+    }
+
+    // Fallback: if payment is paid but plan might not be activated,
+    // try (re)activating. Idempotent — no harm if already premium.
+    if (payment.status === "paid") {
+      const planInfo = PLANS[payment.plan];
+      if (planInfo) {
+        const expiresAt = calculateExpiry(planInfo.months);
+        const { data: ls } = await supabase
+          .from("learner_state")
+          .select("plan")
+          .eq("user_id", payment.user_id)
+          .single();
+        if (ls && ls.plan === "free") {
+          console.log(`Fallback activation: ${payment.user_id} (payment ${ref} was paid but plan not set)`);
+          await supabase
+            .from("learner_state")
+            .update({ plan: "premium", plan_expires_at: expiresAt, updated_at: Date.now() })
+            .eq("user_id", payment.user_id);
+        }
+      }
     }
 
     res.json({ status: payment.status, plan: payment.plan, amount: payment.amount });

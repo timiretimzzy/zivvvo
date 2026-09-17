@@ -86,6 +86,8 @@ export interface ConceptExplainRequest {
   learnerQuestion?: string;
   /** Recent conversation messages for continuity (optional). */
   conversationHistory?: ConversationMessage[];
+  /** D10: Client-detected topic hint from conversation history. */
+  topicHint?: string;
 }
 
 export interface ConceptExplainResponse {

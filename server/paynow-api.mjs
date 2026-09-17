@@ -3,8 +3,138 @@ import cors from "cors";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import fs from "fs";
+import { fileURLToPath } from "url";
+import path from "path";
 
 import ws from "ws";
+
+// ---------------------------------------------------------------------------
+// D10: Load content pack for server-side retrieval
+// ---------------------------------------------------------------------------
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const contentData = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, "../packages/content/src/data/content-v1.json"), "utf8")
+);
+
+// Topic keyword map for server-side retrieval
+const TOPIC_KEYWORDS = {
+  "road-signs": ["sign", "signs", "regulatory", "warning", "information", "guide", "road sign", "prohibition", "mandatory"],
+  "road-markings": ["marking", "markings", "line", "lines", "lane", "road marking", "painted", "double", "solid", "dashed"],
+  "junction-rules": ["junction", "intersection", "roundabout", "turn", "turning", "give way", "right of way", "who goes first", "crossroad", "yield", "priority"],
+  "traffic-lights": ["traffic light", "traffic lights", "signal", "signals", "stop light", "robot", "robots"],
+  "speed-limits": ["speed", "speed limit", "km/h", "kilometres per hour"],
+  "overtaking": ["overtake", "overtaking", "passing", "pass", "safe to overtake"],
+  "parking": ["park", "parking", "stopped", "stopping", "stand", "standing"],
+  "pedestrian-safety": ["pedestrian", "crossing", "zebra", "walk", "walking", "cyclist", "bicycle"],
+  "vehicle-equipment": ["equipment", "tyre", "tyres", "tire", "brake", "lights", "vehicle condition", "spare", "fire extinguisher"],
+  "vehicle-classes": ["class", "classes", "vehicle class", "licence class", "category", "psv", "driving licence", "licence", "license", "learner", "learner's", "requirement", "application", "test"],
+  "towing-loads": ["tow", "towing", "load", "loads", "trailer", "cargo"],
+  "accident-procedures": ["accident", "crash", "collision", "breakdown", "emergency", "incident", "first aid"],
+  "alcohol-drugs": ["alcohol", "drug", "drugs", "drunk", "drink driving", "dui", "intoxication", "blood alcohol"],
+  "night-driving": ["night", "headlight", "headlights", "visibility", "dark", "dipped", "fog", "rain"],
+  "general-rules": ["rule", "rules", "regulation", "law", "road rule", "general rule", "roadcraft", "seatbelt", "horn", "insurance", "defensive", "hazard", "hazards", "safe distance", "following distance", "cell", "cells", "road cell"],
+};
+
+const VALID_TOPIC_IDS = new Set(contentData.topics.map((t) => t.id));
+
+// Pre-index questions by topic and concept for fast retrieval
+const questionsByTopicIndex = new Map();
+const questionsByConceptIndex = new Map();
+for (const q of contentData.questions) {
+  if (!questionsByTopicIndex.has(q.topicId)) questionsByTopicIndex.set(q.topicId, []);
+  questionsByTopicIndex.get(q.topicId).push(q);
+  if (q.concept) {
+    if (!questionsByConceptIndex.has(q.concept)) questionsByConceptIndex.set(q.concept, []);
+    questionsByConceptIndex.get(q.concept).push(q);
+  }
+}
+
+/**
+ * Score a text against topic keywords and return the best matching topic.
+ */
+function matchTopic(text) {
+  const lower = text.toLowerCase();
+  let bestTopic = null;
+  let bestScore = 0;
+  for (const [topicId, keywords] of Object.entries(TOPIC_KEYWORDS)) {
+    if (!VALID_TOPIC_IDS.has(topicId)) continue;
+    let score = 0;
+    for (const kw of keywords) {
+      if (lower.includes(kw)) score++;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestTopic = topicId;
+    }
+  }
+  return bestScore > 0 ? bestTopic : null;
+}
+
+/**
+ * D10: Retrieve relevant Zivvvo content for a learner question.
+ * Returns an object with topic info, example questions, and explanations.
+ */
+function retrieveForQuestion(learnerQuestion, conversationHistory) {
+  const topicId = matchTopic(learnerQuestion);
+  const result = { topicLabel: null, concepts: [], exampleQuestions: [], topicSummary: null };
+
+  // Also check conversation history for topic context
+  let historyTopic = null;
+  if (Array.isArray(conversationHistory) && conversationHistory.length > 0) {
+    const recentTexts = conversationHistory.slice(-4).map((m) => m.text).join(" ");
+    historyTopic = matchTopic(recentTexts);
+  }
+
+  const effectiveTopic = topicId || historyTopic;
+  if (!effectiveTopic) return result;
+
+  const topic = contentData.topics.find((t) => t.id === effectiveTopic);
+  result.topicLabel = topic?.label ?? effectiveTopic;
+
+  // Get topic concept summary
+  const topicQuestions = questionsByTopicIndex.get(effectiveTopic) || [];
+  const conceptSet = new Set(topicQuestions.filter((q) => q.concept).map((q) => q.concept));
+  result.concepts = [...conceptSet];
+
+  // Get up to 3 example questions with explanations (prefer ones with explanations)
+  const withExplanation = topicQuestions.filter((q) => q.explanation && q.explanation.trim().length > 0);
+  const sampled = withExplanation.slice(0, 3);
+  result.exampleQuestions = sampled.map((q) => ({
+    stem: q.stem,
+    explanation: q.explanation,
+    correctAnswer: q.options.filter((o) => o.isCorrect).map((o) => o.text).join("; "),
+  }));
+
+  result.topicSummary = `${result.topicLabel}: covers ${result.concepts.length} concept areas with ${topicQuestions.length} practice questions in Zivvvo.`;
+
+  return result;
+}
+
+/**
+ * D10: Retrieve relevant content for a specific concept.
+ */
+function retrieveForConcept(concept, topicId) {
+  const result = { conceptQuestions: [] };
+  const qs = questionsByConceptIndex.get(concept) || [];
+  const withExplanation = qs.filter((q) => q.explanation && q.explanation.trim().length > 0);
+  result.conceptQuestions = withExplanation.slice(0, 2).map((q) => ({
+    stem: q.stem,
+    explanation: q.explanation,
+    correctAnswer: q.options.filter((o) => o.isCorrect).map((o) => o.text).join("; "),
+  }));
+  return result;
+}
+
+/**
+ * D10: Detect topic switches from conversation history.
+ * Returns the inferred topic from recent messages.
+ */
+function detectConversationTopic(conversationHistory) {
+  if (!Array.isArray(conversationHistory) || conversationHistory.length === 0) return null;
+  const recentTexts = conversationHistory.slice(-4).map((m) => m.text).join(" ");
+  return matchTopic(recentTexts);
+}
 
 // Load env from .env file
 const envPath = new URL("./.env", import.meta.url).pathname;
@@ -421,17 +551,26 @@ const AI_SYSTEM_PROMPT = `You are Zivvvo's AI driving-theory tutor for Zimbabwe'
 IDENTITY & SCOPE:
 You help learners prepare for the Zimbabwe Class 2 learner's licence theory exam. You may discuss any learner's licence study topic that Zivvvo covers, including: road signs, road markings, junction rules, traffic lights, speed limits, overtaking, parking, pedestrian safety, vehicle equipment, vehicle classes, towing and loads, accident procedures, alcohol and drugs, night driving, general driving rules, and learner's licence requirements.
 
+GROUNDING RULES — CRITICAL:
+- The <retrieved_content> section contains authoritative Zivvvo study material. Always ground your response in this material.
+- If the retrieved content contains questions with explanations and correct answers, use them to guide your response. Never contradict the correct answers shown.
+- If the retrieved content is empty or insufficient for the question, say: "I don't have enough verified Zivvvo study material to answer that reliably. Check the study material for this topic in the app."
+- Never invent Zimbabwe driving laws or regulations not present in the retrieved content.
+- Never fabricate citations, legal references, or official sources.
+- When explaining a rule, reference the specific Zivvvo content when available (e.g., "According to Zivvvo's study material...").
+- If a correct answer is shown in the retrieved content, confirm it clearly. The learner may be asking to verify their understanding.
+
 CONVERSATION RULES:
 - Follow the learner's conversation naturally. If they ask a follow-up question, answer it in context.
 - A question about "other types of signs" after discussing "regulatory signs" is clearly about road signs — answer it.
 - Learners may switch topics at any time. Answer their current question, regardless of what was discussed before.
+- If the topic has clearly changed from the previous messages, acknowledge the new topic and answer accordingly.
 - The learner context (weaknesses, strengths) is personalization — it tells you what they need help with, but does NOT restrict what they can ask about.
 
-AUTHORITY:
-- Zivvvo's supplied authoritative content takes precedence over your general knowledge.
-- Never invent Zimbabwe driving laws. If the supplied material is insufficient, say: "I don't have enough verified Zivvvo study material to answer that reliably."
-- Never claim unsupported facts are official law.
-- Never fabricate citations or legal sources.
+TOPIC SWITCHING:
+- If the learner asks about a different topic than what was discussed, treat it as a fresh question on the new topic.
+- Use the <retrieved_content> for the new topic to answer — do not carry over rules from the previous topic.
+- If the question is ambiguous, ask a brief clarifying question before answering.
 
 INTELLIGENCE BOUNDARIES — NEVER:
 - Determine mastery, weakness, readiness, or correctness
@@ -448,12 +587,14 @@ TEACHING STYLE:
 - Vary your response structure — do NOT end every response with "Remember this:"
 - For simple questions, give simple answers — do not over-answer
 - Use natural phrasing like "The key idea is..." or "For the exam, focus on..." only when genuinely helpful
+- When the learner is confused, break the concept down into simpler parts
 
 RESPONSE FORMAT:
 - Use plain text, no markdown headers
 - Keep explanations under 200 words for simple answers, expand slightly for complex topics
 - Use simple language suitable for a learner driver
-- If the learner asks something unrelated to driving theory, politely redirect to exam preparation`;
+- If the learner asks something unrelated to driving theory, politely redirect to exam preparation
+- If the learner asks about something not in the retrieved content, be honest about what Zivvvo covers vs what you cannot verify`;
 
 // In-memory rate limit for AI requests (per IP)
 const aiRateBuckets = new Map();
@@ -529,6 +670,33 @@ function buildConversationBlock(history) {
   return recent.map((m) => `${m.role === "user" ? "Learner" : "Tutor"}: ${m.text}`).join("\n\n");
 }
 
+// D10: Build structured retrieved content block
+function buildRetrievedContentBlock(retrieved) {
+  if (!retrieved) return null;
+  const parts = [];
+  if (retrieved.topicSummary) parts.push(`Topic overview: ${retrieved.topicSummary}`);
+  if (retrieved.concepts && retrieved.concepts.length > 0) {
+    parts.push(`Concepts covered: ${retrieved.concepts.join(", ")}`);
+  }
+  if (retrieved.exampleQuestions && retrieved.exampleQuestions.length > 0) {
+    parts.push("Relevant Zivvvo study material:");
+    for (const eq of retrieved.exampleQuestions) {
+      parts.push(`  Q: ${eq.stem}`);
+      parts.push(`  Correct answer: ${eq.correctAnswer}`);
+      if (eq.explanation) parts.push(`  Explanation: ${eq.explanation}`);
+    }
+  }
+  if (retrieved.conceptQuestions && retrieved.conceptQuestions.length > 0) {
+    parts.push("Reference questions for this concept:");
+    for (const cq of retrieved.conceptQuestions) {
+      parts.push(`  Q: ${cq.stem}`);
+      parts.push(`  Correct answer: ${cq.correctAnswer}`);
+      if (cq.explanation) parts.push(`  Explanation: ${cq.explanation}`);
+    }
+  }
+  return parts.length > 0 ? parts.join("\n") : null;
+}
+
 // POST /api/ai/explain — concept explanation (premium only)
 app.post("/api/ai/explain", aiRateLimit(10), verifyAuth, verifyEntitlement, async (req, res) => {
   try {
@@ -536,11 +704,14 @@ app.post("/api/ai/explain", aiRateLimit(10), verifyAuth, verifyEntitlement, asyn
     if (!concept || !conceptLabel) {
       return res.status(400).json({ error: "Missing concept or conceptLabel" });
     }
-    const contextParts = [
-      `Learner context:`,
+
+    // D10: Retrieve relevant content for this concept
+    const conceptRetrieval = retrieveForConcept(concept, null);
+
+    const learnerContextParts = [
       `Concept: ${conceptLabel}`,
-      `Topic: ${topicLabel || "Unknown"}`,
-      `Learner state: ${state || "unknown"}`,
+      topicLabel ? `Topic: ${topicLabel}` : null,
+      state && state !== "unknown" ? `Learner state: ${state}` : null,
       attempts ? `Evidence: ${correct || 0} correct / ${attempts} attempts` : null,
       mastery ? `Mastery: ${Math.round(mastery * 100)}%` : null,
       canonicalExplanation ? `Authoritative Zivvvo explanation: ${canonicalExplanation}` : null,
@@ -549,10 +720,15 @@ app.post("/api/ai/explain", aiRateLimit(10), verifyAuth, verifyEntitlement, asyn
     ].filter(Boolean).join("\n");
 
     const historyBlock = buildConversationBlock(conversationHistory);
+    const retrievedBlock = buildRetrievedContentBlock(conceptRetrieval);
 
-    const userMessage = historyBlock
-      ? `${historyBlock}\n\n${contextParts}\n\nExplain this concept to the learner.`
-      : `${contextParts}\n\nExplain this concept to the learner.`;
+    const sections = [];
+    if (historyBlock) sections.push(`<conversation_context>\n${historyBlock}\n</conversation_context>`);
+    sections.push(`<learner_context>\n${learnerContextParts}\n</learner_context>`);
+    if (retrievedBlock) sections.push(`<retrieved_content>\n${retrievedBlock}\n</retrieved_content>`);
+    sections.push(`<current_question>\nExplain this concept to the learner.\n</current_question>`);
+
+    const userMessage = sections.join("\n\n");
 
     const messages = [
       { role: "system", content: AI_SYSTEM_PROMPT },
@@ -575,36 +751,61 @@ app.post("/api/ai/explain", aiRateLimit(10), verifyAuth, verifyEntitlement, asyn
 // POST /api/ai/ask — answer learner question (premium only)
 app.post("/api/ai/ask", aiRateLimit(10), verifyAuth, verifyEntitlement, async (req, res) => {
   try {
-    const { question, concept, conceptLabel, topicLabel, state, mastery, attempts, correct, canonicalExplanation, keyRule, recentMistake, conversationHistory } = req.body;
+    const { question, concept, conceptLabel, topicLabel, state, mastery, attempts, correct, canonicalExplanation, keyRule, recentMistake, conversationHistory, topicHint } = req.body;
     if (!question || typeof question !== "string" || question.trim().length === 0) {
       return res.status(400).json({ error: "Missing question" });
     }
     if (question.length > 500) {
       return res.status(400).json({ error: "Question too long (max 500 characters)" });
     }
-    const contextParts = [
-      concept ? `Learner context:\nConcept: ${conceptLabel || concept}` : null,
-      topicLabel ? `Topic: ${topicLabel}` : null,
-      state ? `Learner state: ${state}` : null,
-      mastery ? `Mastery: ${Math.round(mastery * 100)}%` : null,
-      attempts ? `Evidence: ${correct || 0} correct / ${attempts} attempts` : null,
-      canonicalExplanation ? `Authoritative Zivvvo explanation: ${canonicalExplanation}` : null,
-      keyRule ? `Key rule: ${keyRule}` : null,
-      recentMistake ? `Recent mistake context: ${recentMistake.stem}\nCorrect answer: ${recentMistake.correctAnswer}` : null,
-    ].filter(Boolean).join("\n");
+
+    // D10: Retrieve relevant Zivvvo content for this question
+    const questionRetrieval = retrieveForQuestion(question, conversationHistory);
+
+    // D10: Also retrieve concept-specific content if available
+    let conceptRetrieval = null;
+    if (concept) {
+      conceptRetrieval = retrieveForConcept(concept, null);
+    }
+
+    // D10: Detect topic switch
+    const historyTopic = detectConversationTopic(conversationHistory);
+    const currentTopic = matchTopic(question);
+    const topicSwitched = historyTopic && currentTopic && historyTopic !== currentTopic;
+
+    const learnerContextParts = [];
+    if (concept || conceptLabel) learnerContextParts.push(`Concept: ${conceptLabel || concept}`);
+    if (topicLabel) learnerContextParts.push(`Topic: ${topicLabel}`);
+    if (state) learnerContextParts.push(`Learner state: ${state}`);
+    if (mastery) learnerContextParts.push(`Mastery: ${Math.round(mastery * 100)}%`);
+    if (attempts) learnerContextParts.push(`Evidence: ${correct || 0} correct / ${attempts} attempts`);
+    if (canonicalExplanation) learnerContextParts.push(`Authoritative Zivvvo explanation: ${canonicalExplanation}`);
+    if (keyRule) learnerContextParts.push(`Key rule: ${keyRule}`);
+    if (recentMistake) learnerContextParts.push(`Recent mistake context: ${recentMistake.stem}\nCorrect answer: ${recentMistake.correctAnswer}`);
 
     const historyBlock = buildConversationBlock(conversationHistory);
 
-    let userMessage;
-    if (historyBlock && contextParts) {
-      userMessage = `${historyBlock}\n\n${contextParts}\n\nLearner's latest question: ${question}`;
-    } else if (historyBlock) {
-      userMessage = `${historyBlock}\n\nLearner's latest question: ${question}`;
-    } else if (contextParts) {
-      userMessage = `${contextParts}\n\nLearner question: ${question}`;
-    } else {
-      userMessage = `Learner question: ${question}`;
+    // D10: Build retrieved content from question retrieval + concept retrieval
+    const mergedRetrieval = { ...questionRetrieval };
+    if (conceptRetrieval && conceptRetrieval.conceptQuestions.length > 0) {
+      mergedRetrieval.conceptQuestions = conceptRetrieval.conceptQuestions;
     }
+    const retrievedBlock = buildRetrievedContentBlock(mergedRetrieval);
+
+    const sections = [];
+    if (historyBlock) sections.push(`<conversation_context>\n${historyBlock}\n</conversation_context>`);
+    if (learnerContextParts.length > 0) sections.push(`<learner_context>\n${learnerContextParts.join("\n")}\n</learner_context>`);
+    if (retrievedBlock) sections.push(`<retrieved_content>\n${retrievedBlock}\n</retrieved_content>`);
+
+    let questionText = question;
+    if (topicSwitched) {
+      questionText = `[Topic switch detected — the learner is now asking about ${mergedRetrieval.topicLabel || "a new topic"}]\nLearner question: ${question}`;
+    } else {
+      questionText = `Learner question: ${question}`;
+    }
+    sections.push(`<current_question>\n${questionText}\n</current_question>`);
+
+    const userMessage = sections.join("\n\n");
 
     const messages = [
       { role: "system", content: AI_SYSTEM_PROMPT },

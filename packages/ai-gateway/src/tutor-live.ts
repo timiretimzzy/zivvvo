@@ -124,6 +124,7 @@ export class LiveTutorProvider implements TutorProvider {
       keyRule: req.context.keyRule,
       recentMistake: req.context.recentMistake,
       conversationHistory: req.conversationHistory,
+      topicHint: req.topicHint,
     });
   }
 }

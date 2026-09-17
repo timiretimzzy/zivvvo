@@ -121,25 +121,21 @@ export function qidToTopicMap(pack: ContentPack): Map<string, string> {
 // ---------------------------------------------------------------------------
 
 const TOPIC_KEYWORDS: Record<string, string[]> = {
-  "road-signs": ["sign", "signs", "regulatory", "warning", "information", "guide", "road sign"],
-  "road-markings": ["marking", "markings", "line", "lines", "lane", "road marking", "painted"],
-  "traffic-signals": ["traffic light", "traffic lights", "signal", "signals", "stop light"],
+  "road-signs": ["sign", "signs", "regulatory", "warning", "information", "guide", "road sign", "prohibition", "mandatory"],
+  "road-markings": ["marking", "markings", "line", "lines", "lane", "road marking", "painted", "double", "solid", "dashed"],
+  "junction-rules": ["junction", "intersection", "roundabout", "turn", "turning", "give way", "right of way", "who goes first", "crossroad", "yield", "priority"],
+  "traffic-lights": ["traffic light", "traffic lights", "signal", "signals", "stop light", "robot", "robots"],
   "speed-limits": ["speed", "speed limit", "km/h", "kilometres per hour"],
-  "right-of-way": ["right of way", "give way", "yield", "priority", "who goes first"],
   "overtaking": ["overtake", "overtaking", "passing", "pass", "safe to overtake"],
   "parking": ["park", "parking", "stopped", "stopping", "stand", "standing"],
-  "pedestrian-safety": ["pedestrian", "crossing", "zebra", "walk", "walking"],
-  "vehicle-equipment": ["equipment", "tyre", "tyres", "tire", "brake", "lights", "vehicle condition"],
-  "vehicle-classes": ["class", "classes", "vehicle class", "licence class", "category"],
+  "pedestrian-safety": ["pedestrian", "crossing", "zebra", "walk", "walking", "cyclist", "bicycle"],
+  "vehicle-equipment": ["equipment", "tyre", "tyres", "tire", "brake", "lights", "vehicle condition", "spare", "fire extinguisher"],
+  "vehicle-classes": ["class", "classes", "vehicle class", "licence class", "category", "psv", "driving licence", "licence", "license", "learner", "learner's", "requirement", "application", "test"],
   "towing-loads": ["tow", "towing", "load", "loads", "trailer", "cargo"],
-  "accident-procedures": ["accident", "crash", "collision", "breakdown", "emergency", "incident"],
-  "alcohol-drugs": ["alcohol", "drug", "drugs", "drunk", "drink driving", "dui", "intoxication"],
-  "night-driving": ["night", "headlight", "headlights", "visibility", "dark", "dipped"],
-  "driving-rules": ["rule", "rules", "regulation", "law", "road rule", "general rule"],
-  "licence-requirements": ["licence", "license", "learner", "learner's", "requirement", "application", "test"],
-  "junction-rules": ["junction", "intersection", "roundabout", "turn", "turning"],
-  "defensive-driving": ["defensive", "hazard", "hazards", "safe distance", "following distance"],
-  "road-cells": ["cell", "cells", "road cell"],
+  "accident-procedures": ["accident", "crash", "collision", "breakdown", "emergency", "incident", "first aid"],
+  "alcohol-drugs": ["alcohol", "drug", "drugs", "drunk", "drink driving", "dui", "intoxication", "blood alcohol"],
+  "night-driving": ["night", "headlight", "headlights", "visibility", "dark", "dipped", "fog", "rain"],
+  "general-rules": ["rule", "rules", "regulation", "law", "road rule", "general rule", "roadcraft", "seatbelt", "horn", "insurance", "defensive", "hazard", "hazards", "safe distance", "following distance", "cell", "cells", "road cell"],
 };
 
 /**

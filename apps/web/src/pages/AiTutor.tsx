@@ -102,6 +102,11 @@ export default function AiTutorPage() {
 
     try {
       const rc = ctx.weakestConcepts[0] ?? ctx.developingConcepts[0] ?? null;
+
+      // D10: Detect topic hint from recent conversation history
+      const recentUserMessages = chatHistory.slice(-4).filter((m) => m.role === "user").map((m) => m.text).join(" ");
+      const topicHint = recentUserMessages.length > 5 ? recentUserMessages : undefined;
+
       const result = await aiAnswerQuestionStrict(
         {
           learnerQuestion: q,
@@ -115,7 +120,14 @@ export default function AiTutorPage() {
             correct: rc?.correct ?? 0,
             canonicalExplanation: rc?.explanation ?? null,
             keyRule: null,
+            // D10: Include recent mistakes for context
+            recentMistake: ctx.recentMistakes[0] ? {
+              stem: ctx.recentMistakes[0].recentStem,
+              correctAnswer: "",
+              learnerAnswer: "",
+            } : undefined,
           },
+          topicHint,
         },
         chatHistory,
       );

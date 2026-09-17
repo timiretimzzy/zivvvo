@@ -1,11 +1,11 @@
 /**
- * D8: Dedicated AI Tutor Page — full conversational interface
+ * D8/D9: Dedicated AI Tutor Page — full conversational interface
  *
- * Separate from Coach landing page. Contains:
- * - Chat history (persistent within session)
- * - Starter prompts
- * - Learner context for personalization
- * - Conversation continuity for follow-ups
+ * D9: STRICT LIVE AI ONLY.
+ * - Uses aiAnswerQuestionStrict() — never falls back to MockTutorProvider
+ * - Shows explicit failure states for every error type
+ * - Displays "Live" indicator when connected to real AI
+ * - Preserves conversation history across failures
  */
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useApp } from "../store";
@@ -14,9 +14,10 @@ import { buildTutorContext } from "../tutor";
 import {
   getAiConsent,
   setAiConsent,
-  aiAnswerQuestion,
+  aiAnswerQuestionStrict,
+  getLiveAIStatus,
 } from "../ai-provider";
-import type { ConversationMessage } from "@zivvvo/ai-gateway";
+import type { ConversationMessage, AIAvailability } from "@zivvvo/ai-gateway";
 
 const STARTER_PROMPTS = [
   "What should I study?",
@@ -25,6 +26,29 @@ const STARTER_PROMPTS = [
   "Give me an example.",
   "Explain it more simply.",
 ];
+
+function availabilityMessage(reason: AIAvailability): string {
+  switch (reason) {
+    case "offline":
+      return "You're offline, so the live AI Tutor can't respond. Reconnect to the internet and try again.";
+    case "not-configured":
+      return "The AI Tutor is not configured right now.";
+    case "unauthorized":
+      return "Please sign in again to use the AI Tutor.";
+    case "forbidden":
+      return "Your plan doesn't include the AI Tutor. Please upgrade to continue.";
+    case "rate-limited":
+      return "You've reached the AI Tutor limit for now. Please try again later.";
+    case "server-error":
+      return "The AI Tutor is temporarily unavailable. Please try again.";
+    case "timeout":
+      return "The AI Tutor took too long to respond.";
+    case "invalid-response":
+      return "The AI Tutor returned an invalid response. Please try again.";
+    default:
+      return "The AI Tutor is unavailable. Please try again.";
+  }
+}
 
 export default function AiTutorPage() {
   const setCoachSubTab = useApp((s) => s.setCoachSubTab);
@@ -39,6 +63,7 @@ export default function AiTutorPage() {
   const [chatHistory, setChatHistory] = useState<ConversationMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiStatus, setAiStatus] = useState<AIAvailability>("available");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const ctx = useMemo(
@@ -46,13 +71,24 @@ export default function AiTutorPage() {
     [attempts, learnerId, learnerExamDate, learnerConfidence],
   );
 
+  // Check live AI status on mount and when consent changes
+  useEffect(() => {
+    const { reason } = getLiveAIStatus();
+    setAiStatus(reason);
+  }, [aiConsent]);
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [chatHistory, loading]);
 
-  const handleConsent = () => { setAiConsent(true); setAiConsentState(true); };
+  const handleConsent = () => {
+    setAiConsent(true);
+    setAiConsentState(true);
+    const { reason } = getLiveAIStatus();
+    setAiStatus(reason);
+  };
 
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,7 +102,7 @@ export default function AiTutorPage() {
 
     try {
       const rc = ctx.weakestConcepts[0] ?? ctx.developingConcepts[0] ?? null;
-      const result = await aiAnswerQuestion(
+      const result = await aiAnswerQuestionStrict(
         {
           learnerQuestion: q,
           context: {
@@ -83,12 +119,20 @@ export default function AiTutorPage() {
         },
         chatHistory,
       );
-      setChatHistory((prev) => [...prev, {
-        role: "ai",
-        text: result.available && result.text.length > 0 ? result.text : "I can't help with that right now. Try rephrasing your question.",
-      }]);
+
+      // D9: Strict — only accept responses from live AI
+      if (result.available && result.text.length > 0 && result.source === "generated") {
+        setChatHistory((prev) => [...prev, { role: "ai", text: result.text }]);
+        setAiStatus("available");
+      } else {
+        // Live AI failed or returned non-AI source — show explicit failure
+        const reason = result.reason ?? "server-error";
+        setAiStatus(reason);
+        setError(availabilityMessage(reason));
+      }
     } catch {
       setError("Failed to get response. Please try again.");
+      setAiStatus("server-error");
     } finally {
       setLoading(false);
     }
@@ -97,6 +141,8 @@ export default function AiTutorPage() {
   const handleStarter = useCallback((prompt: string) => {
     setQuestion(prompt);
   }, []);
+
+  const isLive = aiStatus === "available";
 
   if (!aiConsent) {
     return (
@@ -128,13 +174,34 @@ export default function AiTutorPage() {
           &larr; Back
         </button>
         <h1 className="text-lg font-bold">AI Tutor</h1>
+        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${isLive ? "bg-ok/15 text-ok" : "bg-surface-2 text-ink-dim"}`}>
+          {isLive ? "\u25cf Live AI" : "\u25cb Offline"}
+        </span>
       </div>
 
       <p className="text-xs text-ink-dim mb-2">
         Ask me about your learner's licence. AI responses are based on Zivvvo's study material.
       </p>
 
-      {chatHistory.length === 0 && (
+      {!isLive && aiConsent && (
+        <Card>
+          <div className="space-y-2">
+            <p className="text-sm font-semibold">AI Tutor unavailable</p>
+            <p className="text-xs text-ink-dim leading-relaxed">
+              {availabilityMessage(aiStatus)}
+            </p>
+            <Button variant="ghost" onClick={() => {
+              const { reason } = getLiveAIStatus();
+              setAiStatus(reason);
+              setError(null);
+            }}>
+              Try again
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {chatHistory.length === 0 && isLive && (
         <div className="mb-3 space-y-2">
           <p className="text-xs text-ink-dim font-medium">Try asking:</p>
           <div className="flex flex-wrap gap-2">
@@ -152,7 +219,7 @@ export default function AiTutorPage() {
       )}
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-2 mb-3 min-h-0">
-        {chatHistory.length === 0 && (
+        {chatHistory.length === 0 && isLive && (
           <div className="rounded-xl bg-primary/5 p-3">
             <p className="text-sm text-ink leading-relaxed">
               Hi! I'm your AI tutor for the Zimbabwe Class 2 learner's licence. How can I help you today?
@@ -180,12 +247,12 @@ export default function AiTutorPage() {
           type="text"
           value={question}
           onChange={(e) => { setQuestion(e.target.value); setError(null); }}
-          placeholder="Ask about any driving rule..."
+          placeholder={isLive ? "Ask about any driving rule..." : "AI Tutor is offline..."}
           className="flex-1 rounded-xl bg-surface-2/60 px-3 py-2 text-sm text-ink placeholder-ink-dim focus:outline-none focus:ring-2 focus:ring-primary"
           maxLength={500}
-          disabled={loading}
+          disabled={loading || !isLive}
         />
-        <Button type="submit" disabled={loading || question.trim().length === 0} className="!px-4">
+        <Button type="submit" disabled={loading || question.trim().length === 0 || !isLive} className="!px-4">
           {loading ? "..." : "Send"}
         </Button>
       </form>

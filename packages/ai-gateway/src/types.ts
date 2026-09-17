@@ -94,7 +94,24 @@ export interface ConceptExplainResponse {
   source: "canonical" | "generated";
   /** Whether the AI was available for this request. */
   available: boolean;
+  /** D9: Structured failure reason when available is false. */
+  reason?: AIAvailability;
 }
+
+/**
+ * D9: Structured AI availability states.
+ * Used by the AI Tutor to display explicit failure messages.
+ */
+export type AIAvailability =
+  | "available"
+  | "offline"
+  | "not-configured"
+  | "unauthorized"
+  | "forbidden"
+  | "rate-limited"
+  | "server-error"
+  | "timeout"
+  | "invalid-response";
 
 /**
  * Tutor Provider — AI coach abstraction.

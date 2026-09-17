@@ -2,7 +2,7 @@
  * D7: Live Tutor Provider — calls the Zivvvo server AI proxy.
  *
  * The server holds the API key. The browser never sees it.
- * Falls back to MockTutorProvider on any failure.
+ * D9: Returns structured error reasons instead of silent fallback.
  */
 import type { TutorProvider, ConceptExplainRequest, ConceptExplainResponse } from "./types";
 
@@ -31,7 +31,10 @@ export class LiveTutorProvider implements TutorProvider {
   private async post(path: string, body: Record<string, unknown>): Promise<ConceptExplainResponse> {
     const token = this.config.getAuthToken();
     if (!token) {
-      return { text: "", source: "canonical", available: false };
+      return { text: "", source: "canonical", available: false, reason: "unauthorized" };
+    }
+    if (!navigator.onLine) {
+      return { text: "", source: "canonical", available: false, reason: "offline" };
     }
     try {
       const controller = new AbortController();
@@ -46,29 +49,47 @@ export class LiveTutorProvider implements TutorProvider {
         signal: controller.signal,
       });
       clearTimeout(timeout);
+      if (res.status === 401) {
+        this.available = false;
+        return { text: "", source: "canonical", available: false, reason: "unauthorized" };
+      }
+      if (res.status === 403) {
+        this.available = false;
+        return { text: "", source: "canonical", available: false, reason: "forbidden" };
+      }
+      if (res.status === 429) {
+        return { text: "", source: "canonical", available: false, reason: "rate-limited" };
+      }
       if (!res.ok) {
         this.available = false;
-        return { text: "", source: "canonical", available: false };
+        return { text: "", source: "canonical", available: false, reason: "server-error" };
       }
       const data = await res.json();
       // Validate response shape
       if (!data || typeof data.text !== "string" || data.text.length === 0) {
-        return { text: "", source: "canonical", available: false };
+        return { text: "", source: "canonical", available: false, reason: "invalid-response" };
       }
       return {
         text: data.text,
         source: data.source === "generated" ? "generated" : "canonical",
         available: data.available !== false,
       };
-    } catch {
+    } catch (err: unknown) {
       this.available = false;
-      return { text: "", source: "canonical", available: false };
+      const isAbort = err instanceof DOMException && err.name === "AbortError";
+      return {
+        text: "",
+        source: "canonical",
+        available: false,
+        reason: isAbort ? "timeout" : "offline",
+      };
     }
   }
 
   async explainConcept(req: ConceptExplainRequest): Promise<ConceptExplainResponse> {
     if (!this.isAvailable()) {
-      return { text: "", source: "canonical", available: false };
+      const reason = !navigator.onLine ? "offline" : !this.config.hasConsent() ? "unauthorized" : "not-configured";
+      return { text: "", source: "canonical", available: false, reason };
     }
     return this.post("/api/ai/explain", {
       concept: req.context.concept,
@@ -87,7 +108,8 @@ export class LiveTutorProvider implements TutorProvider {
 
   async answerQuestion(req: ConceptExplainRequest): Promise<ConceptExplainResponse> {
     if (!this.isAvailable()) {
-      return { text: "", source: "canonical", available: false };
+      const reason = !navigator.onLine ? "offline" : !this.config.hasConsent() ? "unauthorized" : "not-configured";
+      return { text: "", source: "canonical", available: false, reason };
     }
     return this.post("/api/ai/ask", {
       question: req.learnerQuestion,

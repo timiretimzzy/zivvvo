@@ -1,14 +1,16 @@
 /**
- * D7: AI Coach Provider Selection
+ * D7/D9: AI Coach Provider Selection
  *
  * Handles provider selection, consent, network detection, and caching.
- * The provider is selected automatically:
- *   Online + consent + configured → LiveTutorProvider
- *   Otherwise → MockTutorProvider
+ *
+ * D9: Strict AI mode for the AI Tutor:
+ *   - aiAnswerQuestionStrict() → live AI only, no mock fallback
+ *   - aiAnswerQuestion() → live AI with mock fallback (used by Coach concept explanations)
+ *   - aiExplainConcept() → live AI with mock fallback (used by Coach concept cards)
  *
  * No client-side secrets. The server holds the API key.
  */
-import { MockTutorProvider, LiveTutorProvider, type TutorProvider, type ConceptExplainRequest, type ConceptExplainResponse, type ConversationMessage } from "@zivvvo/ai-gateway";
+import { MockTutorProvider, LiveTutorProvider, type TutorProvider, type ConceptExplainRequest, type ConceptExplainResponse, type ConversationMessage, type AIAvailability } from "@zivvvo/ai-gateway";
 
 // ---------------------------------------------------------------------------
 // Consent
@@ -160,6 +162,7 @@ export async function aiExplainConcept(req: ConceptExplainRequest): Promise<Conc
 
 /**
  * Answer a learner question using AI (with fallback).
+ * Used by Coach concept explanations — falls back to mock on failure.
  */
 export async function aiAnswerQuestion(
   req: ConceptExplainRequest,
@@ -178,4 +181,46 @@ export async function aiAnswerQuestion(
   }
 
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// D9: Strict AI — live only, no silent mock fallback
+// ---------------------------------------------------------------------------
+
+/**
+ * D9: Get the live AI provider or determine why it's unavailable.
+ * Never returns MockTutorProvider.
+ */
+export function getLiveAIStatus(): { provider: LiveTutorProvider | null; reason: AIAvailability } {
+  if (!navigator.onLine) {
+    return { provider: null, reason: "offline" };
+  }
+  if (!hasAiConsent()) {
+    return { provider: null, reason: "unauthorized" };
+  }
+  const live = getLiveProvider();
+  if (live.isAvailable()) {
+    return { provider: live, reason: "available" };
+  }
+  return { provider: null, reason: "not-configured" };
+}
+
+/**
+ * D9: Answer a question using live AI only.
+ * Returns structured error on failure — never falls back to MockTutorProvider.
+ * Used by the AI Tutor page.
+ */
+export async function aiAnswerQuestionStrict(
+  req: ConceptExplainRequest,
+  conversationHistory?: ConversationMessage[],
+): Promise<ConceptExplainResponse> {
+  const { provider, reason } = getLiveAIStatus();
+  if (!provider) {
+    return { text: "", source: "canonical", available: false, reason };
+  }
+  const enriched: ConceptExplainRequest = {
+    ...req,
+    conversationHistory: conversationHistory ?? req.conversationHistory,
+  };
+  return provider.answerQuestion(enriched);
 }

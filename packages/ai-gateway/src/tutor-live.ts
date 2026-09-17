@@ -81,6 +81,7 @@ export class LiveTutorProvider implements TutorProvider {
       canonicalExplanation: req.context.canonicalExplanation,
       keyRule: req.context.keyRule,
       recentMistake: req.context.recentMistake,
+      conversationHistory: req.conversationHistory,
     });
   }
 
@@ -94,9 +95,13 @@ export class LiveTutorProvider implements TutorProvider {
       conceptLabel: req.context.conceptLabel,
       topicLabel: req.context.topicLabel,
       state: req.context.state,
+      mastery: req.context.mastery,
+      attempts: req.context.attempts,
+      correct: req.context.correct,
       canonicalExplanation: req.context.canonicalExplanation,
       keyRule: req.context.keyRule,
       recentMistake: req.context.recentMistake,
+      conversationHistory: req.conversationHistory,
     });
   }
 }

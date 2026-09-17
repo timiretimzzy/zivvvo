@@ -145,6 +145,29 @@ async function verifyAuth(req, res, next) {
   }
 }
 
+// D8: Verify the authenticated user has an active premium plan
+async function verifyEntitlement(req, res, next) {
+  try {
+    const { data: ls, error } = await supabase
+      .from("learner_state")
+      .select("plan, plan_expires_at")
+      .eq("user_id", req.authUserId)
+      .single();
+    if (error || !ls) {
+      return res.status(403).json({ error: "Could not verify plan status" });
+    }
+    if (ls.plan !== "premium") {
+      return res.status(403).json({ error: "Premium plan required" });
+    }
+    if (ls.plan_expires_at && new Date(ls.plan_expires_at).getTime() < Date.now()) {
+      return res.status(403).json({ error: "Premium plan has expired" });
+    }
+    next();
+  } catch {
+    return res.status(500).json({ error: "Entitlement check failed" });
+  }
+}
+
 const app = express();
 app.use(cors({ origin: ["https://www.zivvvo.co.zw", "https://zivvvo.co.zw"] }));
 app.use(express.urlencoded({ extended: false, limit: "10kb" }));
@@ -395,22 +418,42 @@ const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "google/gemini-2.5-flas
 
 const AI_SYSTEM_PROMPT = `You are Zivvvo's AI driving-theory tutor for Zimbabwe's Class 2 learner's licence exam.
 
-HARD RULES:
-1. The Zivvvo content supplied to you is authoritative for this lesson. Do not invent Zimbabwe driving laws.
-2. Do not override supplied answers. The Zivvvo answer key is correct.
-3. Do not contradict the authoritative explanation provided.
-4. If the supplied material is insufficient, say: "I don't have enough verified information to answer that reliably."
-5. Never fabricate citations or legal sources.
-6. Do not claim that a generated statement is official law unless the supplied source establishes it.
-7. Keep responses concise — readable on a phone in under a minute.
-8. Focus on learner's licence exam preparation only. If asked about unrelated topics, redirect to the exam.
-9. Never determine mastery, weakness, readiness, correctness, or question selection. Only explain and teach.
+IDENTITY & SCOPE:
+You help learners prepare for the Zimbabwe Class 2 learner's licence theory exam. You may discuss any learner's licence study topic that Zivvvo covers, including: road signs, road markings, junction rules, traffic lights, speed limits, overtaking, parking, pedestrian safety, vehicle equipment, vehicle classes, towing and loads, accident procedures, alcohol and drugs, night driving, general driving rules, and learner's licence requirements.
+
+CONVERSATION RULES:
+- Follow the learner's conversation naturally. If they ask a follow-up question, answer it in context.
+- A question about "other types of signs" after discussing "regulatory signs" is clearly about road signs — answer it.
+- Learners may switch topics at any time. Answer their current question, regardless of what was discussed before.
+- The learner context (weaknesses, strengths) is personalization — it tells you what they need help with, but does NOT restrict what they can ask about.
+
+AUTHORITY:
+- Zivvvo's supplied authoritative content takes precedence over your general knowledge.
+- Never invent Zimbabwe driving laws. If the supplied material is insufficient, say: "I don't have enough verified Zivvvo study material to answer that reliably."
+- Never claim unsupported facts are official law.
+- Never fabricate citations or legal sources.
+
+INTELLIGENCE BOUNDARIES — NEVER:
+- Determine mastery, weakness, readiness, or correctness
+- Select questions or scores
+- Claim the learner passed or failed
+- Override the deterministic engine
+
+TEACHING STYLE:
+- Concise, friendly, clear
+- Zimbabwe-specific where supported by supplied content
+- Phone-friendly — readable on a small screen
+- Explain rather than lecture
+- Use examples when helpful
+- Vary your response structure — do NOT end every response with "Remember this:"
+- For simple questions, give simple answers — do not over-answer
+- Use natural phrasing like "The key idea is..." or "For the exam, focus on..." only when genuinely helpful
 
 RESPONSE FORMAT:
 - Use plain text, no markdown headers
-- Keep explanations under 200 words
+- Keep explanations under 200 words for simple answers, expand slightly for complex topics
 - Use simple language suitable for a learner driver
-- Include a "Remember this:" takeaway at the end`;
+- If the learner asks something unrelated to driving theory, politely redirect to exam preparation`;
 
 // In-memory rate limit for AI requests (per IP)
 const aiRateBuckets = new Map();
@@ -479,27 +522,41 @@ async function callOpenRouter(messages, maxTokens = 500) {
   }
 }
 
-// POST /api/ai/explain — concept explanation
-app.post("/api/ai/explain", aiRateLimit(10), verifyAuth, async (req, res) => {
+// Build a conversation history block for the LLM message array
+function buildConversationBlock(history) {
+  if (!Array.isArray(history) || history.length === 0) return null;
+  const recent = history.slice(-6); // Keep last 6 messages (3 turns)
+  return recent.map((m) => `${m.role === "user" ? "Learner" : "Tutor"}: ${m.text}`).join("\n\n");
+}
+
+// POST /api/ai/explain — concept explanation (premium only)
+app.post("/api/ai/explain", aiRateLimit(10), verifyAuth, verifyEntitlement, async (req, res) => {
   try {
-    const { concept, conceptLabel, topicLabel, state, mastery, attempts, correct, canonicalExplanation, keyRule, recentMistake } = req.body;
+    const { concept, conceptLabel, topicLabel, state, mastery, attempts, correct, canonicalExplanation, keyRule, recentMistake, conversationHistory } = req.body;
     if (!concept || !conceptLabel) {
       return res.status(400).json({ error: "Missing concept or conceptLabel" });
     }
     const contextParts = [
+      `Learner context:`,
       `Concept: ${conceptLabel}`,
       `Topic: ${topicLabel || "Unknown"}`,
       `Learner state: ${state || "unknown"}`,
-      attempts ? `Evidence: ${correct || 0} correct / ${attempts} attempts` : "No attempts yet",
+      attempts ? `Evidence: ${correct || 0} correct / ${attempts} attempts` : null,
       mastery ? `Mastery: ${Math.round(mastery * 100)}%` : null,
-      canonicalExplanation ? `Authoritative explanation: ${canonicalExplanation}` : null,
+      canonicalExplanation ? `Authoritative Zivvvo explanation: ${canonicalExplanation}` : null,
       keyRule ? `Key rule: ${keyRule}` : null,
       recentMistake ? `Recent mistake: ${recentMistake.stem}\nLearner answer: ${recentMistake.learnerAnswer}\nCorrect answer: ${recentMistake.correctAnswer}` : null,
     ].filter(Boolean).join("\n");
 
+    const historyBlock = buildConversationBlock(conversationHistory);
+
+    const userMessage = historyBlock
+      ? `${historyBlock}\n\n${contextParts}\n\nExplain this concept to the learner.`
+      : `${contextParts}\n\nExplain this concept to the learner.`;
+
     const messages = [
       { role: "system", content: AI_SYSTEM_PROMPT },
-      { role: "user", content: `Explain this concept to a learner preparing for their Class 2 learner's licence exam.\n\n${contextParts}\n\nExplain the rule clearly. Keep it concise and suitable for a phone screen.` },
+      { role: "user", content: userMessage },
     ];
     const text = await callOpenRouter(messages);
     res.json({ text, source: "generated", available: true });
@@ -515,10 +572,10 @@ app.post("/api/ai/explain", aiRateLimit(10), verifyAuth, async (req, res) => {
   }
 });
 
-// POST /api/ai/ask — answer learner question
-app.post("/api/ai/ask", aiRateLimit(10), verifyAuth, async (req, res) => {
+// POST /api/ai/ask — answer learner question (premium only)
+app.post("/api/ai/ask", aiRateLimit(10), verifyAuth, verifyEntitlement, async (req, res) => {
   try {
-    const { question, concept, conceptLabel, topicLabel, state, canonicalExplanation, keyRule, recentMistake } = req.body;
+    const { question, concept, conceptLabel, topicLabel, state, mastery, attempts, correct, canonicalExplanation, keyRule, recentMistake, conversationHistory } = req.body;
     if (!question || typeof question !== "string" || question.trim().length === 0) {
       return res.status(400).json({ error: "Missing question" });
     }
@@ -526,17 +583,32 @@ app.post("/api/ai/ask", aiRateLimit(10), verifyAuth, async (req, res) => {
       return res.status(400).json({ error: "Question too long (max 500 characters)" });
     }
     const contextParts = [
-      concept ? `Current concept: ${conceptLabel || concept}` : null,
+      concept ? `Learner context:\nConcept: ${conceptLabel || concept}` : null,
       topicLabel ? `Topic: ${topicLabel}` : null,
       state ? `Learner state: ${state}` : null,
-      canonicalExplanation ? `Authoritative explanation: ${canonicalExplanation}` : null,
+      mastery ? `Mastery: ${Math.round(mastery * 100)}%` : null,
+      attempts ? `Evidence: ${correct || 0} correct / ${attempts} attempts` : null,
+      canonicalExplanation ? `Authoritative Zivvvo explanation: ${canonicalExplanation}` : null,
       keyRule ? `Key rule: ${keyRule}` : null,
       recentMistake ? `Recent mistake context: ${recentMistake.stem}\nCorrect answer: ${recentMistake.correctAnswer}` : null,
     ].filter(Boolean).join("\n");
 
+    const historyBlock = buildConversationBlock(conversationHistory);
+
+    let userMessage;
+    if (historyBlock && contextParts) {
+      userMessage = `${historyBlock}\n\n${contextParts}\n\nLearner's latest question: ${question}`;
+    } else if (historyBlock) {
+      userMessage = `${historyBlock}\n\nLearner's latest question: ${question}`;
+    } else if (contextParts) {
+      userMessage = `${contextParts}\n\nLearner question: ${question}`;
+    } else {
+      userMessage = `Learner question: ${question}`;
+    }
+
     const messages = [
       { role: "system", content: AI_SYSTEM_PROMPT },
-      { role: "user", content: contextParts ? `${contextParts}\n\nLearner question: ${question}` : `Learner question: ${question}` },
+      { role: "user", content: userMessage },
     ];
     const text = await callOpenRouter(messages);
     res.json({ text, source: "generated", available: true });

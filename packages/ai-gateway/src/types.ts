@@ -75,10 +75,17 @@ export interface ConceptTutorContext {
   };
 }
 
+export interface ConversationMessage {
+  role: "user" | "ai";
+  text: string;
+}
+
 export interface ConceptExplainRequest {
   context: ConceptTutorContext;
   /** The learner's question (optional — for Q&A mode). */
   learnerQuestion?: string;
+  /** Recent conversation messages for continuity (optional). */
+  conversationHistory?: ConversationMessage[];
 }
 
 export interface ConceptExplainResponse {

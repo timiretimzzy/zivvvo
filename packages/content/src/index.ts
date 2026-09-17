@@ -115,3 +115,83 @@ export function qidToTopicMap(pack: ContentPack): Map<string, string> {
   }
   return map;
 }
+
+// ---------------------------------------------------------------------------
+// D8: Content Retrieval — find relevant authoritative material for AI context
+// ---------------------------------------------------------------------------
+
+const TOPIC_KEYWORDS: Record<string, string[]> = {
+  "road-signs": ["sign", "signs", "regulatory", "warning", "information", "guide", "road sign"],
+  "road-markings": ["marking", "markings", "line", "lines", "lane", "road marking", "painted"],
+  "traffic-signals": ["traffic light", "traffic lights", "signal", "signals", "stop light"],
+  "speed-limits": ["speed", "speed limit", "km/h", "kilometres per hour"],
+  "right-of-way": ["right of way", "give way", "yield", "priority", "who goes first"],
+  "overtaking": ["overtake", "overtaking", "passing", "pass", "safe to overtake"],
+  "parking": ["park", "parking", "stopped", "stopping", "stand", "standing"],
+  "pedestrian-safety": ["pedestrian", "crossing", "zebra", "walk", "walking"],
+  "vehicle-equipment": ["equipment", "tyre", "tyres", "tire", "brake", "lights", "vehicle condition"],
+  "vehicle-classes": ["class", "classes", "vehicle class", "licence class", "category"],
+  "towing-loads": ["tow", "towing", "load", "loads", "trailer", "cargo"],
+  "accident-procedures": ["accident", "crash", "collision", "breakdown", "emergency", "incident"],
+  "alcohol-drugs": ["alcohol", "drug", "drugs", "drunk", "drink driving", "dui", "intoxication"],
+  "night-driving": ["night", "headlight", "headlights", "visibility", "dark", "dipped"],
+  "driving-rules": ["rule", "rules", "regulation", "law", "road rule", "general rule"],
+  "licence-requirements": ["licence", "license", "learner", "learner's", "requirement", "application", "test"],
+  "junction-rules": ["junction", "intersection", "roundabout", "turn", "turning"],
+  "defensive-driving": ["defensive", "hazard", "hazards", "safe distance", "following distance"],
+  "road-cells": ["cell", "cells", "road cell"],
+};
+
+/**
+ * Find the most relevant topic for a user question using keyword matching.
+ * Returns topicId or null if no strong match.
+ */
+export function findRelevantTopic(pack: ContentPack, question: string): string | null {
+  const q = question.toLowerCase();
+  const validTopicIds = new Set(pack.topics.map((t) => t.id));
+  let bestTopic: string | null = null;
+  let bestScore = 0;
+  for (const [topicId, keywords] of Object.entries(TOPIC_KEYWORDS)) {
+    if (!validTopicIds.has(topicId)) continue;
+    let score = 0;
+    for (const kw of keywords) {
+      if (q.includes(kw)) score++;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestTopic = topicId;
+    }
+  }
+  return bestScore > 0 ? bestTopic : null;
+}
+
+/**
+ * Find concepts matching a search term (case-insensitive substring match on concept name).
+ */
+export function findConceptsByTerm(pack: ContentPack, term: string): string[] {
+  const t = term.toLowerCase();
+  const concepts = new Set<string>();
+  for (const q of pack.questions) {
+    if (q.concept && q.concept.includes(t)) {
+      concepts.add(q.concept);
+    }
+  }
+  return [...concepts];
+}
+
+/**
+ * Get a brief content summary for a topic (list of concept names + question count).
+ * Useful for giving the AI a map of what Zivvvo covers in a topic area.
+ */
+export function topicContentSummary(pack: ContentPack, topicId: string): { concepts: string[]; questionCount: number } {
+  const qs = pack.questions.filter((q) => q.topicId === topicId);
+  const concepts = [...new Set(qs.map((q) => q.concept).filter((c): c is string => !!c))];
+  return { concepts, questionCount: qs.length };
+}
+
+/**
+ * Get all topic labels as a flat list for the AI to know what Zivvvo covers.
+ */
+export function allTopicLabels(pack: ContentPack): string[] {
+  return pack.topics.filter((t) => t.kind === "content").map((t) => t.label);
+}

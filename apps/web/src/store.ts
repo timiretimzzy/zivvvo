@@ -28,6 +28,7 @@ import { pack } from "./catalog";
 import type { ConfidenceBand, GoalId } from "./onboarding";
 
 export type Tab = "home" | "learn" | "practice" | "progress" | "coach" | "settings" | "pricing";
+export type CoachSubTab = "landing" | "tutor";
 
 /** Guard so the XP-granting daily-goal bonus is awarded at most once per day. */
 let dailyGoalRewardedDay = -1;
@@ -44,6 +45,7 @@ export interface AppStore {
   engagement: EngagementState;
   activeSession: LearningSession | null;
   tab: Tab;
+  coachSubTab: CoachSubTab;
   plan: "free" | "premium";
   planExpiresAt?: number;
   init: (authUserId?: string) => Promise<void>;
@@ -64,6 +66,7 @@ completeSession: () => Promise<void>;
   canStartSession: (type: string) => boolean;
   setPlan: (plan: "free" | "premium", expiresAt?: number) => void;
   setTab: (t: Tab) => void;
+  setCoachSubTab: (t: CoachSubTab) => void;
   updateLearner: (id: string, patch: Partial<StoredLearner>) => Promise<void>;
   /** Reduce one engagement event, persist, and re-render. */
   advanceEngagement: (event: EngagementEvent) => void;
@@ -102,6 +105,7 @@ export const useApp = create<AppStore>((set, get) => ({
   engagement: initialEngagementState(),
   activeSession: null,
   tab: "home",
+  coachSubTab: "landing",
   plan: "free",
   planExpiresAt: undefined,
 
@@ -266,6 +270,8 @@ export const useApp = create<AppStore>((set, get) => ({
     // Enforce XP gate for free users
     const { plan, engagement } = get();
     if (plan === "free") {
+      // Mock exams are strictly premium
+      if (s.type === "mock") return false;
       const level = levelInfo(engagement.xp, defaultConfig).level;
       if (level >= 3) return false;
     }
@@ -365,10 +371,12 @@ export const useApp = create<AppStore>((set, get) => ({
     };
   },
 
-  /** Can this session type be started? Premium users have no limits. Free users are gated at Level 3. */
-  canStartSession: (_type: string) => {
+  /** Can this session type be started? Premium users have no limits. Free users are gated at Level 3. Mock is always premium-only. */
+  canStartSession: (type: string) => {
     const { plan, engagement } = get();
     if (plan === "premium") return true;
+    // Mock exams are strictly premium
+    if (type === "mock") return false;
     const level = levelInfo(engagement.xp, defaultConfig).level;
     return level < 3;
   },
@@ -382,7 +390,8 @@ export const useApp = create<AppStore>((set, get) => ({
     }
   },
 
-  setTab: (t) => set({ tab: t }),
+  setTab: (t) => set({ tab: t, coachSubTab: t === "coach" ? get().coachSubTab : "landing" }),
+  setCoachSubTab: (t) => set({ coachSubTab: t }),
 
   updateLearner: async (id, patch) => {
     await db.learners.update(id, patch);

@@ -8,7 +8,7 @@
  *
  * No client-side secrets. The server holds the API key.
  */
-import { MockTutorProvider, LiveTutorProvider, type TutorProvider, type ConceptExplainRequest, type ConceptExplainResponse } from "@zivvvo/ai-gateway";
+import { MockTutorProvider, LiveTutorProvider, type TutorProvider, type ConceptExplainRequest, type ConceptExplainResponse, type ConversationMessage } from "@zivvvo/ai-gateway";
 
 // ---------------------------------------------------------------------------
 // Consent
@@ -161,13 +161,20 @@ export async function aiExplainConcept(req: ConceptExplainRequest): Promise<Conc
 /**
  * Answer a learner question using AI (with fallback).
  */
-export async function aiAnswerQuestion(req: ConceptExplainRequest): Promise<ConceptExplainResponse> {
+export async function aiAnswerQuestion(
+  req: ConceptExplainRequest,
+  conversationHistory?: ConversationMessage[],
+): Promise<ConceptExplainResponse> {
+  const enriched: ConceptExplainRequest = {
+    ...req,
+    conversationHistory: conversationHistory ?? req.conversationHistory,
+  };
   const provider = getTutorProvider();
-  const result = await provider.answerQuestion(req);
+  const result = await provider.answerQuestion(enriched);
 
   // If live provider failed, fall back to mock
   if (!result.available && provider.id !== "mock-tutor-v0") {
-    return mockProvider.answerQuestion(req);
+    return mockProvider.answerQuestion(enriched);
   }
 
   return result;

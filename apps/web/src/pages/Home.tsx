@@ -113,7 +113,7 @@ export default function HomePage() {
 
   const startPlanDay = () => {
     if (!cursor || !userPlan || !learnerId) return;
-    if (!canStartSession("smart")) { setPaywall(true); return; }
+    if (!canStartSession(cursor.day.sessionType)) { setPaywall(true); return; }
     play("start");
     vibrate(20);
     const r = planDaySession(cursor.day, attempts, reviews, learnerId);

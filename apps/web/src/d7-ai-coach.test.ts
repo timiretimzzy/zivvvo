@@ -6,7 +6,6 @@ import {
   getAiConsent,
   setAiConsent,
   aiExplainConcept,
-  aiAnswerQuestion,
   getTutorProvider,
   setAuthTokenGetter,
 } from "./ai-provider";

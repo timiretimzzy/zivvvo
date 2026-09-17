@@ -5,6 +5,7 @@ import { syncManager, fetchPlanStatus } from "./sync-supabase";
 import { OnboardingFlow } from "./OnboardingFlow";
 import { isSoundMuted, play, setSoundMuted } from "./sound";
 import { onAuthStateChange, signInWithGoogle, getAccessToken } from "./auth";
+import { setAuthTokenGetter } from "./ai-provider";
 import HomePage from "./pages/Home";
 import LearnPage from "./pages/Learn";
 import PracticePage from "./pages/Practice";
@@ -59,7 +60,6 @@ function SyncIndicator() {
 
 function PaymentReturnPage() {
   const setPlan = useApp((s) => s.setPlan);
-  const setTab = useApp((s) => s.setTab);
   const [status, setStatus] = useState<"checking" | "paid" | "failed">("checking");
   const params = new URLSearchParams(window.location.search);
   const ref = params.get("ref");
@@ -245,6 +245,22 @@ export default function App() {
       }
       prevAuthUser.current = user;
     });
+  }, []);
+
+  // Wire AI provider auth token getter (caches token from session)
+  useEffect(() => {
+    let cachedToken: string | null = null;
+    void getAccessToken().then((t) => { cachedToken = t; });
+    setAuthTokenGetter(() => cachedToken);
+    // Refresh token when auth state changes
+    const unsub = onAuthStateChange((user) => {
+      if (user) {
+        void getAccessToken().then((t) => { cachedToken = t; });
+      } else {
+        cachedToken = null;
+      }
+    });
+    return unsub;
   }, []);
 
   const openSettings = () => {

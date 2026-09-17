@@ -1,10 +1,11 @@
 import { useEffect, useMemo } from "react";
 import { BAND_LABEL, computeReadiness } from "@zivvvo/assessment-engine";
 import { defaultConfig } from "@zivvvo/learning-engine";
+import { conceptsForTopic } from "@zivvvo/content";
 import { useApp } from "../store";
 import { useSync } from "../sync";
 import { syncManager } from "../sync-supabase";
-import { topicMastery } from "../engine";
+import { topicMastery, concepts, conceptReadiness } from "../engine";
 import { pack } from "../catalog";
 import { db } from "../db";
 import { confidenceBandLabel, daysUntilExam, goalLabel } from "../onboarding";
@@ -57,6 +58,22 @@ export default function ProgressPage() {
   );
   const rows = useMemo(() => topicMastery(attempts).sort((a, b) => b.stat.mastery - a.stat.mastery), [attempts]);
 
+  const conceptMasteryList = useMemo(() => concepts(attempts), [attempts]);
+
+  const readinessData = useMemo(() => conceptReadiness(attempts), [attempts]);
+
+  const conceptStates = useMemo(() => {
+    const map = new Map<string, { mastery: number; state: "strong" | "developing" | "needs-attention" | "unknown" }>();
+    for (const c of conceptMasteryList) {
+      const readiness = readinessData.weak.find((r) => r.concept === c.concept)
+        ?? readinessData.developing.find((r) => r.concept === c.concept)
+        ?? readinessData.strong.find((r) => r.concept === c.concept);
+      const state = readiness?.state ?? "unknown";
+      map.set(c.concept, { mastery: c.mastery, state });
+    }
+    return map;
+  }, [conceptMasteryList, readinessData]);
+
   return (
     <div className="space-y-3">
       <h1 className="text-xl font-bold">Progress</h1>
@@ -95,15 +112,39 @@ export default function ProgressPage() {
 
       <Card title="Topics">
         <div className="space-y-3">
-          {rows.map(({ stat, topic }) => (
-            <div key={topic.id}>
-              <div className="mb-1 flex items-center justify-between text-sm">
-                <span>{topic.label}</span>
-                <span className="text-xs text-ink-dim">{Math.round(stat.mastery * 100)}%</span>
+          {rows.map(({ stat, topic }) => {
+            const topicConcepts = conceptsForTopic(pack, topic.id);
+            return (
+              <div key={topic.id}>
+                <div className="mb-1 flex items-center justify-between text-sm">
+                  <span>{topic.label}</span>
+                  <span className="text-xs text-ink-dim">{Math.round(stat.mastery * 100)}%</span>
+                </div>
+                <Meter value={stat.mastery} />
+                {topicConcepts.length > 0 && (
+                  <div className="mt-1.5 ml-2 space-y-1">
+                    {topicConcepts.map((c) => {
+                      const cs = conceptStates.get(c.concept);
+                      const label = c.concept.split("-").map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+                      return (
+                        <div key={c.concept} className="flex items-center justify-between text-xs">
+                          <span className="text-ink-dim truncate">{label}</span>
+                          <span className={`ml-2 ${
+                            cs?.state === "strong" ? "text-ok" :
+                            cs?.state === "developing" ? "text-warn" :
+                            cs?.state === "needs-attention" ? "text-bad" :
+                            "text-ink-dim"
+                          }`}>
+                            {cs ? `${Math.round(cs.mastery * 100)}%` : "—"}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-              <Meter value={stat.mastery} />
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Card>
 

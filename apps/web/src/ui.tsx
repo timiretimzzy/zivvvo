@@ -15,12 +15,14 @@ export function Button({
   variant = "primary",
   disabled = false,
   className = "",
+  type = "button",
 }: {
   children: ReactNode;
   onClick?: () => void;
   variant?: "primary" | "ghost" | "danger";
   disabled?: boolean;
   className?: string;
+  type?: "button" | "submit" | "reset";
 }) {
   const styles = {
     primary: "bg-primary text-slate-950 hover:brightness-110",
@@ -29,6 +31,7 @@ export function Button({
   }[variant];
   return (
     <button
+      type={type}
       onClick={onClick}
       disabled={disabled}
       className={`w-full rounded-xl px-4 py-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-40 ${styles} ${className}`}

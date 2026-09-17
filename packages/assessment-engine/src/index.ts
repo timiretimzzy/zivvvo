@@ -9,3 +9,4 @@ export * from "./diagnostic";
 export * from "./mock";
 export * from "./difficulty";
 export * from "./variants";
+export * from "./concept";

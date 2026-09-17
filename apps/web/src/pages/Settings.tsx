@@ -5,6 +5,7 @@ import { Card, Button } from "../ui";
 import { EXAM_GOALS, type GoalId } from "../onboarding";
 import { isSoundMuted, play, setSoundMuted } from "../sound";
 import { getCurrentUser } from "../auth";
+import { getAiConsent, setAiConsent } from "../ai-provider";
 
 const GOAL_OPTIONS = EXAM_GOALS.filter((g) => g.enabled).map((g) => ({
   id: g.id as GoalId,
@@ -47,6 +48,7 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
   const [saving, setSaving] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
+  const [aiConsent, setAiConsentState] = useState(getAiConsent);
 
   useEffect(() => {
     getCurrentUser().then((u) => setEmail(u?.email ?? null)).catch(() => {});
@@ -226,6 +228,36 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
             </div>
           )}
         </div>
+      </Card>
+
+      <Card title="AI Coach">
+        <p className="text-xs text-ink-dim mb-3">
+          When enabled, your tutor can use AI to generate personalised explanations. Your learning data stays on your device — only concept context is sent to our server.
+        </p>
+        <div className="flex items-center justify-between">
+          <span className="text-sm">AI-enhanced explanations</span>
+          <button
+            onClick={() => {
+              const next = !aiConsent;
+              setAiConsentState(next);
+              setAiConsent(next);
+            }}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              aiConsent ? "bg-primary" : "bg-ink-dim/30"
+            }`}
+            role="switch"
+            aria-checked={aiConsent}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                aiConsent ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+        </div>
+        <p className="text-xs text-ink-dim mt-2">
+          You can turn this off at any time. When disabled, you still get the full deterministic explanations.
+        </p>
       </Card>
 
       <Card title="About">

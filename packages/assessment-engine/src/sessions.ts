@@ -1,4 +1,5 @@
 import type { ContentPack, Question } from "@zivvvo/content";
+import { getFamilyId } from "@zivvvo/content";
 import type { LearningConfig } from "@zivvvo/learning-engine";
 import { mulberry32, seededShuffle } from "./random";
 import type { LearningMode, LearningSession, SessionType } from "./types";
@@ -39,7 +40,8 @@ function withExplanation(questions: Question[]): Question[] {
   return questions.filter((q) => q.explanation);
 }
 
-/** Prefer freshly-unseen questions (variety), explanation-rich ones (value). */
+/** Prefer freshly-unseen questions (variety), explanation-rich ones (value).
+ *  Family deduplication: at most one question per family may enter a session. */
 function sample(
   _pack: ContentPack,
   ctx: SessionGenContext,
@@ -60,8 +62,19 @@ function sample(
   const fresh = shuffled.filter((q) => !recentlySeen.has(q.qid));
   const repeat = shuffled.filter((q) => recentlySeen.has(q.qid));
   const preferred = fresh.length >= size ? fresh : [...fresh, ...repeat];
-  return preferred
-    .slice(0, Math.min(size, preferred.length))
+
+  // Family deduplication: at most one question per family
+  const selected: Question[] = [];
+  const seenFamilies = new Set<string>();
+  for (const q of preferred) {
+    const fid = getFamilyId(q.qid);
+    if (seenFamilies.has(fid)) continue;
+    seenFamilies.add(fid);
+    selected.push(q);
+    if (selected.length >= size) break;
+  }
+
+  return selected
     .sort((a, b) => (b.explanation ? 1 : 0) - (a.explanation ? 1 : 0));
 }
 
@@ -79,6 +92,9 @@ function build(
   purpose: string,
   questions: Question[],
 ): SessionResult {
+  // Defensive: verify family invariant before wrapping
+  assertUniqueQuestionFamilies(questions);
+
   const now = ctx.now ?? Date.now();
   return {
     mode,
@@ -108,6 +124,27 @@ const CONTENT_ORDER_PREF = [
 
 function contentTopics(pack: ContentPack): string[] {
   return pack.topics.filter((t) => t.kind === "content").map((t) => t.id);
+}
+
+/** Defensive check: assert all question families in a session are unique.
+ *  MAX FAMILY OCCURRENCES PER SESSION = 1 */
+export function assertUniqueQuestionFamilies(questions: Question[]): void {
+  const seen = new Set<string>();
+  for (const q of questions) {
+    const fid = getFamilyId(q.qid);
+    if (seen.has(fid)) {
+      throw new Error(
+        `Family deduplication invariant violated: family ${fid} appears more than once in session (QID ${q.qid})`,
+      );
+    }
+    seen.add(fid);
+  }
+}
+
+/** Check if a question can be added to picked without violating family invariant. */
+function canAddToSession(picked: Question[], candidate: Question): boolean {
+  const fid = getFamilyId(candidate.qid);
+  return !picked.some((p) => getFamilyId(p.qid) === fid);
 }
 
 /** STEP 3 -- Diagnostic: balanced, stratified, deterministic, short. */
@@ -264,7 +301,18 @@ export function buildMistakeReviewSession(
     .filter((q): q is Question => !!q && q.status === "answered");
   const sessionSeed = ctx.seed ?? Date.now();
   const rng = mulberry32(sessionSeed);
-  const chosen = base.length > size ? seededShuffle(base, rng).slice(0, size) : base;
+
+  // Family deduplication: at most one question per family
+  const dedupedBase: Question[] = [];
+  const seenFamilies = new Set<string>();
+  for (const q of base) {
+    const fid = getFamilyId(q.qid);
+    if (seenFamilies.has(fid)) continue;
+    seenFamilies.add(fid);
+    dedupedBase.push(q);
+  }
+
+  const chosen = dedupedBase.length > size ? seededShuffle(dedupedBase, rng).slice(0, size) : dedupedBase;
   const siblingPool = contentPool(pack);
   const questions: VariantQuestion[] = chosen.map(
     (q) => composeVariant(q, siblingPool, variantSeed(sessionSeed, q.qid), preferHard),
@@ -295,7 +343,11 @@ export function buildMockSession(
       const inTopic = all.filter((q) => q.topicId === t);
       const want = Math.min(per, mock.questionCount - picked.length);
       if (want <= 0) break;
-      picked.push(...sample(pack, ctx, config, inTopic, want, false));
+      const sampled = sample(pack, ctx, config, inTopic, want, false);
+      for (const q of sampled) {
+        if (picked.length >= mock.questionCount) break;
+        if (canAddToSession(picked, q)) picked.push(q);
+      }
     }
   } else {
     picked = sample(pack, ctx, config, all, mock.questionCount, false);
@@ -303,7 +355,11 @@ export function buildMockSession(
 
   if (picked.length < mock.questionCount) {
     const rest = all.filter((q) => !picked.some((p) => p.qid === q.qid));
-    picked.push(...sample(pack, ctx, config, rest, mock.questionCount - picked.length, false));
+    const fill = sample(pack, ctx, config, rest, mock.questionCount - picked.length, false);
+    for (const q of fill) {
+      if (picked.length >= mock.questionCount) break;
+      if (canAddToSession(picked, q)) picked.push(q);
+    }
   }
 
   const ordered = seededShuffle(picked, rng).slice(0, mock.questionCount);
@@ -352,11 +408,16 @@ export function buildDynamicMock(
   const byWeight = [...topics].sort((a, b) => (weights[b] ?? 0) - (weights[a] ?? 0));
 
   let picked: Question[] = [];
-  const allocate = (q: Question) => { picked.push(q); };
   for (const t of byWeight) {
     const inTopic = all.filter((q) => q.topicId === t);
     const want = Math.min(inTopic.length, Math.floor(count * ((weights[t] ?? WeightsNeutral) / totalW)));
-    if (want > 0) picked.push(...sample(pack, ctx, config, inTopic, want, true).slice(0, Math.min(want, count - picked.length)));
+    if (want > 0) {
+      const sampled = sample(pack, ctx, config, inTopic, want, true);
+      for (const q of sampled) {
+        if (picked.length >= count) break;
+        if (canAddToSession(picked, q)) picked.push(q);
+      }
+    }
   }
   let budget = count - picked.length;
   for (const t of byWeight) {
@@ -364,7 +425,10 @@ export function buildDynamicMock(
     const remaining = all.filter((q) => q.topicId === t && !picked.some((p) => p.qid === q.qid));
     if (remaining.length === 0) continue;
     const add = sample(pack, ctx, config, remaining, Math.min(budget, count - picked.length), true);
-    for (const question of add) { if (picked.length < count) allocate(question); }
+    for (const q of add) {
+      if (picked.length >= count) break;
+      if (canAddToSession(picked, q)) picked.push(q);
+    }
     budget = count - picked.length;
   }
 

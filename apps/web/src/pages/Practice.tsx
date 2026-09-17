@@ -18,10 +18,15 @@ import {
   weaknessSession,
   dueReviewSession,
   mistakeReviewSession,
+  mockDiagnosis,
+  conceptMistakes,
+  conceptSession,
+  weakestConcept,
   topWeakness,
   dueReviewCount,
   recentMisses,
 } from "../engine";
+import { getConceptTeaching } from "../tutor";
 import { pack } from "../catalog";
 import { Card, Button, Meter, Tag, QuestionMedia } from "../ui";
 import { play, vibrate } from "../sound";
@@ -33,6 +38,10 @@ function SessionRunner({ session }: { session: LearningSession }) {
   const recordAnswer = useApp((s) => s.recordAnswer);
   const completeSession = useApp((s) => s.completeSession);
   const allAttempts = useApp((s) => s.attempts);
+  const canStartSession = useApp((s) => s.canStartSession);
+  const setTab = useApp((s) => s.setTab);
+  const startSession = useApp((s) => s.startSession);
+  const learnerId = useApp((s) => s.activeLearnerId);
 
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<number[]>([]);
@@ -142,6 +151,29 @@ function SessionRunner({ session }: { session: LearningSession }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [done, session, allAttempts]);
 
+  const diagnosis = useMemo(() => {
+    if (!done || !isMock) return [];
+    const sessionAttempts = allAttempts.filter((a) => a.sessionId === session.id);
+    return mockDiagnosis(sessionAttempts);
+  }, [done, isMock, allAttempts, session?.id]);
+
+  const strongConcepts = useMemo(() => diagnosis.filter((d) => d.pct >= 80), [diagnosis]);
+  const developingConcepts = useMemo(() => diagnosis.filter((d) => d.pct >= 50 && d.pct < 80), [diagnosis]);
+  const weakConcepts = useMemo(() => diagnosis.filter((d) => d.pct < 50), [diagnosis]);
+
+  // Teaching data for mock diagnosis concepts
+  const mockTeachings = useMemo(() => {
+    const map = new Map<string, ReturnType<typeof getConceptTeaching>>();
+    for (const d of diagnosis) {
+      map.set(d.concept, getConceptTeaching(d.concept));
+    }
+    return map;
+  }, [diagnosis]);
+
+  const [expandedTeaching, setExpandedTeaching] = useState<string | null>(null);
+
+  const [paywall, setPaywall] = useState(false);
+
   /* ── Session complete ── */
   if (done) {
     const s = summary;
@@ -192,12 +224,148 @@ function SessionRunner({ session }: { session: LearningSession }) {
             </ul>
           </Card>
         ) : null}
+        {isMock && diagnosis.length > 0 ? (
+          <Card title="Concept breakdown">
+            {weakConcepts.length > 0 && (
+              <div className="mb-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-bad mb-2">Needs attention</p>
+                <div className="space-y-3">
+                  {weakConcepts.map((d) => {
+                    const label = d.concept.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+                    const teaching = mockTeachings.get(d.concept);
+                    const isExpanded = expandedTeaching === d.concept;
+                    return (
+                      <div key={d.concept}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-ink">{label}</p>
+                            <p className="text-xs text-ink-dim">{d.correct} / {d.total} correct</p>
+                          </div>
+                          <div className="flex gap-2">
+                            {teaching?.keyRule && (
+                              <Button variant="ghost" className="!px-3 !py-1.5" onClick={() =>
+                                setExpandedTeaching(isExpanded ? null : d.concept)
+                              }>
+                                {isExpanded ? "Hide" : "Learn"}
+                              </Button>
+                            )}
+                            <Button variant="ghost" className="!px-3 !py-1.5" onClick={() => {
+                              if (!canStartSession("concept-recovery")) { setPaywall(true); return; }
+                              play("start"); vibrate(20);
+                              const r = conceptSession(d.concept, allAttempts, learnerId!);
+                              if (r) void startSession(r.session);
+                            }}>
+                              Practice
+                            </Button>
+                          </div>
+                        </div>
+                        {isExpanded && teaching?.keyRule && (
+                          <div className="mt-2 rounded-xl bg-surface-2/60 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-ink-dim mb-1">Key rule</p>
+                            <p className="text-sm text-ink leading-snug">{teaching.keyRule}</p>
+                            {teaching.explanation && (
+                              <p className="mt-2 text-xs text-ink-dim leading-relaxed">{teaching.explanation}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {developingConcepts.length > 0 && (
+              <div className="mb-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-warn mb-2">Developing</p>
+                <div className="space-y-3">
+                  {developingConcepts.map((d) => {
+                    const label = d.concept.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+                    const teaching = mockTeachings.get(d.concept);
+                    const isExpanded = expandedTeaching === d.concept;
+                    return (
+                      <div key={d.concept}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-ink">{label}</p>
+                            <p className="text-xs text-ink-dim">{d.correct} / {d.total} correct</p>
+                          </div>
+                          <div className="flex gap-2">
+                            {teaching?.keyRule && (
+                              <Button variant="ghost" className="!px-3 !py-1.5" onClick={() =>
+                                setExpandedTeaching(isExpanded ? null : d.concept)
+                              }>
+                                {isExpanded ? "Hide" : "Learn"}
+                              </Button>
+                            )}
+                            <Button variant="ghost" className="!px-3 !py-1.5" onClick={() => {
+                              if (!canStartSession("concept-recovery")) { setPaywall(true); return; }
+                              play("start"); vibrate(20);
+                              const r = conceptSession(d.concept, allAttempts, learnerId!);
+                              if (r) void startSession(r.session);
+                            }}>
+                              Practice
+                            </Button>
+                          </div>
+                        </div>
+                        {isExpanded && teaching?.keyRule && (
+                          <div className="mt-2 rounded-xl bg-surface-2/60 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-ink-dim mb-1">Key rule</p>
+                            <p className="text-sm text-ink leading-snug">{teaching.keyRule}</p>
+                            {teaching.explanation && (
+                              <p className="mt-2 text-xs text-ink-dim leading-relaxed">{teaching.explanation}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {strongConcepts.length > 0 && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-ok mb-2">Strong</p>
+                <div className="space-y-2">
+                  {strongConcepts.map((d) => {
+                    const label = d.concept.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+                    return (
+                      <div key={d.concept} className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-ink">{label}</p>
+                          <p className="text-xs text-ink-dim">{d.correct} / {d.total} correct</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </Card>
+        ) : isMock ? (
+          <Card title="Concept breakdown">
+            <p className="text-sm text-ink-dim">Not enough concept data from this mock.</p>
+          </Card>
+        ) : null}
         {sessionAttempts.length > 0 ? (
           <Button variant="ghost" onClick={() => setReviewOpen(true)}>
             Review answers
           </Button>
         ) : null}
         <Button onClick={() => useApp.getState().setTab("home")}>Back home</Button>
+        {paywall && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6" onClick={() => setPaywall(false)}>
+            <div className="w-full max-w-sm rounded-2xl bg-surface p-6 text-center" onClick={(e) => e.stopPropagation()}>
+              <h2 className="text-lg font-bold">Upgrade to continue</h2>
+              <p className="mt-2 text-sm text-ink-dim">
+                You've reached the free practice limit. Upgrade for unlimited concept recovery sessions.
+              </p>
+              <div className="mt-5 flex gap-3">
+                <Button variant="ghost" onClick={() => setPaywall(false)}>Dismiss</Button>
+                <Button onClick={() => { setPaywall(false); setTab("pricing"); }}>See Plans</Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -432,6 +600,14 @@ export default function PracticePage() {
     const r = mistakeReviewSession(attempts, learnerId!);
     if (r) void startSession(r.session);
   });
+
+  const launchConceptSession = (conceptId: string) => {
+    if (!canStartSession("concept-recovery")) { setPaywall(true); return; }
+    play("start");
+    vibrate(20);
+    const r = conceptSession(conceptId, attempts, learnerId!);
+    if (r) void startSession(r.session);
+  };
   const launchMock = plan === "premium"
     ? () => {
         if (startingRef.current) return;
@@ -446,7 +622,9 @@ export default function PracticePage() {
   const weak = topWeakness(attempts);
   const due = dueReviewCount(reviews);
   const misses = recentMisses(attempts);
-  const hasDue = weak || due > 0 || misses.length > 0;
+  const conceptClust = conceptMistakes(attempts);
+  const weakConcept = weakestConcept(attempts);
+  const hasDue = weak || due > 0 || misses.length > 0 || conceptClust.length > 0;
 
   if (mode === "read") {
     return (
@@ -509,6 +687,11 @@ export default function PracticePage() {
               </div>
               <p className="text-sm text-ink-dim">
                 {misses.length} recent {misses.length === 1 ? "miss" : "misses"} to learn from.
+                {conceptClust.length > 0 && (
+                  <span className="block mt-1">
+                    Grouped by {conceptClust.length} concept{conceptClust.length === 1 ? "" : "s"}.
+                  </span>
+                )}
               </p>
               <Button onClick={launchMistakes} className="mt-3">Review mistakes</Button>
             </Card>
@@ -555,6 +738,32 @@ export default function PracticePage() {
           </Button>
         )}
       </Card>
+
+      {/* ── Concept-targeted practice ── */}
+          {conceptClust.length > 0 && (
+        <>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-dim">Focus by concept</h2>
+          {conceptClust.slice(0, 3).map((cl) => {
+            const conceptLabel = cl.concept.split("-").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+            const topicLabel = pack.topics.find((t) => t.id === cl.topicId)?.label ?? cl.topicId;
+            const isWeakest = cl.concept === weakConcept?.concept;
+            return (
+              <Card key={cl.concept}>
+                <div className="flex items-center gap-2 mb-1">
+                  <Tag tone={isWeakest ? "bad" : "warn"}>{conceptLabel}</Tag>
+                  <span className="text-xs text-ink-dim">{topicLabel}</span>
+                </div>
+                <p className="text-sm text-ink-dim">
+                  {cl.count} miss{cl.count === 1 ? "" : "es"} across {cl.mistakes.length} question{cl.mistakes.length === 1 ? "" : "s"}.
+                </p>
+                <Button variant="ghost" className="mt-2" onClick={() => launchConceptSession(cl.concept)}>
+                  Practice {conceptLabel}
+                </Button>
+              </Card>
+            );
+          })}
+        </>
+      )}
 
       {/* ── Paywall modal ── */}
       {paywall && (

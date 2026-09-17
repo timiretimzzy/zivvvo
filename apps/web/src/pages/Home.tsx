@@ -8,7 +8,7 @@ import {
   type PlanTopic,
 } from "@zivvvo/learning-engine";
 import { useApp } from "../store";
-import { learnerState, nextActivity, sessionFor, quickSession, planDaySession, lastMockAt, topicMastery } from "../engine";
+import { learnerState, nextActivity, sessionFor, quickSession, planDaySession, lastMockAt, topicMastery, recommendationReason } from "../engine";
 import { pack } from "../catalog";
 import { firstActivityNudge } from "../onboarding";
 import { Card, Button, Tag, Meter } from "../ui";
@@ -73,6 +73,11 @@ export default function HomePage() {
       }),
     );
   }, [learnerId, attempts, reviews, learner, engagement.streakDays]);
+
+  const conceptReason = useMemo(
+    () => (activity ? recommendationReason(attempts, activity) : null),
+    [attempts, activity],
+  );
 
   const plan = useMemo(() => {
     if (!learner?.examDate || !learner.dailyMinutes) return null;
@@ -190,6 +195,9 @@ export default function HomePage() {
           </div>
           <h2 className="mt-2 text-lg font-bold leading-snug">{activity.title}</h2>
           <p className="mt-1 text-sm text-ink-dim">{activity.reason.label}</p>
+          {conceptReason && (
+            <p className="mt-1 text-xs font-medium text-primary">{conceptReason.message}</p>
+          )}
           {nudge && <p className="mt-3 text-sm text-ink-dim">{nudge}</p>}
           <div className="mt-4">
             <Button onClick={startActivity}>Start now</Button>

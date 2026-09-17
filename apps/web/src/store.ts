@@ -458,8 +458,6 @@ export const useApp = create<AppStore>((set, get) => ({
 // Checks plan status on visibility change (tab focus) and every 5 minutes.
 // If a server-side payment was made or plan expired, the client picks it up
 // without requiring a page reload.
-let planCheckTimer: ReturnType<typeof setInterval> | null = null;
-
 function checkPlanExpiry() {
   const state = useApp.getState();
   if (!state.ready || !isAuthenticated()) return;
@@ -481,17 +479,17 @@ function checkPlanExpiry() {
 }
 
 // Start on first init
-const unsubInit = useApp.subscribe(
-  (s) => s.ready,
-  (ready) => {
-    if (!ready) return;
-    unsubInit();
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") checkPlanExpiry();
-    });
-    planCheckTimer = setInterval(checkPlanExpiry, 5 * 60 * 1000);
-  },
-);
+let _initSubscribed = true;
+const unsubInit = useApp.subscribe((s) => {
+  if (!_initSubscribed) return;
+  if (!s.ready) return;
+  _initSubscribed = false;
+  unsubInit();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") checkPlanExpiry();
+  });
+  void setInterval(checkPlanExpiry, 5 * 60 * 1000);
+});
 
 // After a successful pull, absorb server attempts for the active learner into
 // memory so the UI reflects fetched data without a reload. Rows for other

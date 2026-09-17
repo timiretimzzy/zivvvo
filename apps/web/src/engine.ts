@@ -8,6 +8,17 @@ import {
   buildSmartSession,
   buildWeaknessSession,
   ZVID_MOCK_DEFAULT,
+  conceptMastery,
+  detectConceptWeakness,
+  conceptRecoveryCandidates,
+  mistakeClusters,
+  mockConceptDiagnosis,
+  conceptReadinessBreakdown,
+  type ConceptMastery,
+  type ConceptWeakness,
+  type MistakeCluster,
+  type ConceptDiagnosis,
+  type ConceptReadiness,
 } from "@zivvvo/assessment-engine";
 import {
   DEFAULT_PRIORITIES_V2,
@@ -83,7 +94,7 @@ export function weaknesses(attempts: AttemptEvent[]): { signal: ReturnType<typeo
     if (signal.kind === "none") continue;
     // Upgrade "early" to recurring/deteriorating when pattern analysis agrees
     if (signal.kind === "early" && topicAttempts.length > 0) {
-      const pattern = classifyPattern(topicAttempts.map((a) => ({ isCorrect: a.correct, ts: a.ts })), defaultConfig);
+      const pattern = classifyPattern(topicAttempts.map((a) => ({ isCorrect: a.isCorrect, ts: a.ts })), defaultConfig);
       if (pattern.kind !== "none") {
         out.push({ signal: { ...signal, kind: pattern.kind, reasons: pattern.reasons }, topic: { id: t.id, label: t.label } });
         continue;
@@ -218,4 +229,134 @@ export function planDaySession(day: PlanDay, attempts: AttemptEvent[], reviews: 
 export function lastMockAt(attempts: AttemptEvent[]): number | undefined {
   const mocks = attempts.filter((a) => a.mode === "mock");
   return mocks.length ? Math.max(...mocks.map((a) => a.ts)) : undefined;
+}
+
+// ---------------------------------------------------------------------------
+// D5: Concept Intelligence helpers — consume D4 APIs, no new algorithms
+// ---------------------------------------------------------------------------
+
+/** Per-concept mastery for the active learner. */
+export function concepts(attempts: AttemptEvent[]): ConceptMastery[] {
+  return conceptMastery(attempts, pack, defaultConfig);
+}
+
+/** Concept-level weaknesses (evidence-based only). */
+export function conceptWeaknesses(attempts: AttemptEvent[]): ConceptWeakness[] {
+  return detectConceptWeakness(attempts, pack, defaultConfig);
+}
+
+/** Mistakes clustered by concept. */
+export function conceptMistakes(attempts: AttemptEvent[]): MistakeCluster[] {
+  return mistakeClusters(attempts, pack);
+}
+
+/** Post-mock concept diagnosis. */
+export function mockDiagnosis(mockAttempts: AttemptEvent[]): ConceptDiagnosis[] {
+  return mockConceptDiagnosis(mockAttempts, pack);
+}
+
+/** Concept readiness breakdown into strong/developing/weak/unknown. */
+export function conceptReadiness(attempts: AttemptEvent[]): {
+  strong: ConceptReadiness[];
+  developing: ConceptReadiness[];
+  weak: ConceptReadiness[];
+  unknown: ConceptReadiness[];
+} {
+  return conceptReadinessBreakdown(attempts, pack, defaultConfig);
+}
+
+/**
+ * Generate a concept-aware reason for the current recommendation.
+ * Returns the most specific concept weakness that explains why this activity
+ * was recommended, or null if no concept-level explanation exists.
+ */
+export function recommendationReason(
+  attempts: AttemptEvent[],
+  activity: { sessionType: string; targetTopicId?: string; kind: string },
+): { concept: string; topicId: string; message: string } | null {
+  const weaknesses = conceptWeaknesses(attempts);
+  if (weaknesses.length === 0) return null;
+
+  // For recovery/weakness sessions, find the weakest concept in the target topic
+  if (activity.sessionType === "recovery" && activity.targetTopicId) {
+    const topicWeak = weaknesses.filter((w) => w.topicId === activity.targetTopicId);
+    if (topicWeak.length > 0) {
+      const worst = topicWeak[0]!;
+      return {
+        concept: worst.concept,
+        topicId: worst.topicId,
+        message: formatWeaknessReason(worst),
+      };
+    }
+  }
+
+  // For any session type, find the overall weakest concept
+  if (weaknesses.length > 0) {
+    const worst = weaknesses[0]!;
+    return {
+      concept: worst.concept,
+      topicId: worst.topicId,
+      message: formatWeaknessReason(worst),
+    };
+  }
+
+  return null;
+}
+
+/** Build a targeted concept practice session (family-deduped). */
+export function conceptSession(
+  concept: string,
+  attempts: AttemptEvent[],
+  learnerId: string,
+  size = 8,
+): SessionResult | null {
+  const candidates = conceptRecoveryCandidates(concept, pack);
+  if (candidates.length === 0) return null;
+  const qids = candidates.slice(0, size).map((c) => c.qid);
+  // Use buildReviewSession with concept qids — it respects family dedup
+  return buildReviewSession(
+    { pack, attempts, seed: Date.now() % 2147483647, learnerId },
+    defaultConfig,
+    qids,
+    Math.min(size, qids.length),
+  );
+}
+
+/** Get the weakest concept for a specific topic. */
+export function topConceptWeakness(
+  attempts: AttemptEvent[],
+  topicId: string,
+): ConceptWeakness | null {
+  const weaknesses = conceptWeaknesses(attempts);
+  const topicWeak = weaknesses.filter((w) => w.topicId === topicId);
+  return topicWeak[0] ?? null;
+}
+
+/** Get the overall weakest concept across all topics. */
+export function weakestConcept(attempts: AttemptEvent[]): ConceptWeakness | null {
+  return conceptWeaknesses(attempts)[0] ?? null;
+}
+
+function formatWeaknessReason(w: ConceptWeakness): string {
+  switch (w.kind) {
+    case "recurring":
+      return `You've missed several ${formatConcept(w.concept)} questions recently.`;
+    case "deteriorating":
+      return `Your ${formatConcept(w.concept)} performance has dropped.`;
+    case "long-unreviewed":
+      return `It's been a while since you practised ${formatConcept(w.concept)}.`;
+    case "early":
+      return w.evidence === 0
+        ? `You haven't tried ${formatConcept(w.concept)} yet.`
+        : `More practice needed on ${formatConcept(w.concept)}.`;
+    default:
+      return `Focus on ${formatConcept(w.concept)}.`;
+  }
+}
+
+function formatConcept(concept: string): string {
+  return concept
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }

@@ -33,6 +33,10 @@ if (!PAYNOW_ID || !PAYNOW_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
   process.exit(1);
 }
 
+if (!process.env.OPENROUTER_API_KEY) {
+  console.warn("Warning: OPENROUTER_API_KEY not set. AI Coach will use deterministic fallback.");
+}
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
   auth: { persistSession: false },
   db: { schema: "zivvvo" },
@@ -379,6 +383,172 @@ app.get("/api/paynow/status", rateLimit(30), verifyAuth, async (req, res) => {
   } catch (err) {
     console.error("Status check error:", err);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// D7: AI Coach endpoints — server-side LLM proxy
+// ---------------------------------------------------------------------------
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "google/gemini-2.0-flash-001";
+
+const AI_SYSTEM_PROMPT = `You are Zivvvo's AI driving-theory tutor for Zimbabwe's Class 2 learner's licence exam.
+
+HARD RULES:
+1. The Zivvvo content supplied to you is authoritative for this lesson. Do not invent Zimbabwe driving laws.
+2. Do not override supplied answers. The Zivvvo answer key is correct.
+3. Do not contradict the authoritative explanation provided.
+4. If the supplied material is insufficient, say: "I don't have enough verified information to answer that reliably."
+5. Never fabricate citations or legal sources.
+6. Do not claim that a generated statement is official law unless the supplied source establishes it.
+7. Keep responses concise — readable on a phone in under a minute.
+8. Focus on learner's licence exam preparation only. If asked about unrelated topics, redirect to the exam.
+9. Never determine mastery, weakness, readiness, correctness, or question selection. Only explain and teach.
+
+RESPONSE FORMAT:
+- Use plain text, no markdown headers
+- Keep explanations under 200 words
+- Use simple language suitable for a learner driver
+- Include a "Remember this:" takeaway at the end`;
+
+// In-memory rate limit for AI requests (per IP)
+const aiRateBuckets = new Map();
+function aiRateLimit(maxPerMin) {
+  return (req, res, next) => {
+    const ip = req.ip || req.socket.remoteAddress || "unknown";
+    const now = Date.now();
+    const bucket = aiRateBuckets.get(ip);
+    if (!bucket || now - bucket.start > 60000) {
+      aiRateBuckets.set(ip, { start: now, count: 1 });
+      return next();
+    }
+    bucket.count++;
+    if (bucket.count > maxPerMin) {
+      return res.status(429).json({ error: "Too many AI requests. Please wait a moment." });
+    }
+    next();
+  };
+}
+
+// Cleanup old AI rate limit buckets every 5 minutes
+setInterval(() => {
+  const cutoff = Date.now() - 120000;
+  for (const [ip, bucket] of aiRateBuckets) {
+    if (bucket.start < cutoff) aiRateBuckets.delete(ip);
+  }
+}, 300000);
+
+async function callOpenRouter(messages, maxTokens = 500) {
+  if (!OPENROUTER_API_KEY) {
+    throw new Error("AI_PROVIDER_NOT_CONFIGURED");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "HTTP-Referer": "https://www.zivvvo.co.zw",
+        "X-Title": "Zivvvo AI Tutor",
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_MODEL,
+        messages,
+        max_tokens: maxTokens,
+        temperature: 0.7,
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`LLM_HTTP_${res.status}: ${text.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    const text = data.choices?.[0]?.message?.content;
+    if (!text || typeof text !== "string" || text.trim().length === 0) {
+      throw new Error("LLM_EMPTY_RESPONSE");
+    }
+    return text.trim();
+  } catch (err) {
+    clearTimeout(timeout);
+    throw err;
+  }
+}
+
+// POST /api/ai/explain — concept explanation
+app.post("/api/ai/explain", aiRateLimit(10), verifyAuth, async (req, res) => {
+  try {
+    const { concept, conceptLabel, topicLabel, state, mastery, attempts, correct, canonicalExplanation, keyRule, recentMistake } = req.body;
+    if (!concept || !conceptLabel) {
+      return res.status(400).json({ error: "Missing concept or conceptLabel" });
+    }
+    const contextParts = [
+      `Concept: ${conceptLabel}`,
+      `Topic: ${topicLabel || "Unknown"}`,
+      `Learner state: ${state || "unknown"}`,
+      attempts ? `Evidence: ${correct || 0} correct / ${attempts} attempts` : "No attempts yet",
+      mastery ? `Mastery: ${Math.round(mastery * 100)}%` : null,
+      canonicalExplanation ? `Authoritative explanation: ${canonicalExplanation}` : null,
+      keyRule ? `Key rule: ${keyRule}` : null,
+      recentMistake ? `Recent mistake: ${recentMistake.stem}\nLearner answer: ${recentMistake.learnerAnswer}\nCorrect answer: ${recentMistake.correctAnswer}` : null,
+    ].filter(Boolean).join("\n");
+
+    const messages = [
+      { role: "system", content: AI_SYSTEM_PROMPT },
+      { role: "user", content: `Explain this concept to a learner preparing for their Class 2 learner's licence exam.\n\n${contextParts}\n\nExplain the rule clearly. Keep it concise and suitable for a phone screen.` },
+    ];
+    const text = await callOpenRouter(messages);
+    res.json({ text, source: "generated", available: true });
+  } catch (err) {
+    if (err.message === "AI_PROVIDER_NOT_CONFIGURED") {
+      return res.json({ text: "", source: "canonical", available: false });
+    }
+    if (err.name === "AbortError") {
+      return res.json({ text: "", source: "canonical", available: false });
+    }
+    console.error("AI explain error:", err.message);
+    res.json({ text: "", source: "canonical", available: false });
+  }
+});
+
+// POST /api/ai/ask — answer learner question
+app.post("/api/ai/ask", aiRateLimit(10), verifyAuth, async (req, res) => {
+  try {
+    const { question, concept, conceptLabel, topicLabel, state, canonicalExplanation, keyRule, recentMistake } = req.body;
+    if (!question || typeof question !== "string" || question.trim().length === 0) {
+      return res.status(400).json({ error: "Missing question" });
+    }
+    if (question.length > 500) {
+      return res.status(400).json({ error: "Question too long (max 500 characters)" });
+    }
+    const contextParts = [
+      concept ? `Current concept: ${conceptLabel || concept}` : null,
+      topicLabel ? `Topic: ${topicLabel}` : null,
+      state ? `Learner state: ${state}` : null,
+      canonicalExplanation ? `Authoritative explanation: ${canonicalExplanation}` : null,
+      keyRule ? `Key rule: ${keyRule}` : null,
+      recentMistake ? `Recent mistake context: ${recentMistake.stem}\nCorrect answer: ${recentMistake.correctAnswer}` : null,
+    ].filter(Boolean).join("\n");
+
+    const messages = [
+      { role: "system", content: AI_SYSTEM_PROMPT },
+      { role: "user", content: contextParts ? `${contextParts}\n\nLearner question: ${question}` : `Learner question: ${question}` },
+    ];
+    const text = await callOpenRouter(messages);
+    res.json({ text, source: "generated", available: true });
+  } catch (err) {
+    if (err.message === "AI_PROVIDER_NOT_CONFIGURED") {
+      return res.json({ text: "", source: "canonical", available: false });
+    }
+    if (err.name === "AbortError") {
+      return res.json({ text: "", source: "canonical", available: false });
+    }
+    console.error("AI ask error:", err.message);
+    res.json({ text: "", source: "canonical", available: false });
   }
 });
 

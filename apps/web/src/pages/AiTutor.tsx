@@ -254,19 +254,38 @@ export default function AiTutorPage() {
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="flex gap-2 shrink-0">
-        <input
-          type="text"
+      <form onSubmit={handleSubmit} className="flex items-end gap-2 shrink-0">
+        <textarea
           value={question}
           onChange={(e) => { setQuestion(e.target.value); setError(null); }}
           placeholder={isLive ? "Ask about any driving rule..." : "AI Tutor is offline..."}
-          className="flex-1 rounded-xl bg-surface-2/60 px-3 py-2 text-sm text-ink placeholder-ink-dim focus:outline-none focus:ring-2 focus:ring-primary"
+          rows={1}
           maxLength={500}
           disabled={loading || !isLive}
+          className="flex-1 resize-none rounded-xl bg-surface-2/60 px-3 py-2.5 text-sm text-ink placeholder-ink-dim focus:outline-none focus:ring-2 focus:ring-primary max-h-32 overflow-y-auto"
+          onInput={(e) => {
+            const el = e.currentTarget;
+            el.style.height = "auto";
+            el.style.height = Math.min(el.scrollHeight, 128) + "px";
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              e.currentTarget.form?.requestSubmit();
+            }
+          }}
         />
-        <Button type="submit" disabled={loading || question.trim().length === 0 || !isLive} className="!px-4">
-          {loading ? "..." : "Send"}
-        </Button>
+        <button
+          type="submit"
+          disabled={loading || question.trim().length === 0 || !isLive}
+          className="shrink-0 rounded-full bg-primary p-2 text-slate-950 disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        >
+          {loading ? (
+            <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" /><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" /></svg>
+          ) : (
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" /></svg>
+          )}
+        </button>
       </form>
       {error && <p className="text-xs text-bad mt-2">{error}</p>}
       <p className="text-xs text-ink-dim mt-2">Responses are AI-generated. Always verify against official study material.</p>

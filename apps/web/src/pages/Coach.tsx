@@ -10,7 +10,7 @@
  * Deterministic engine is authoritative for mastery, weakness, readiness.
  * AI is the language layer — explain, simplify, answer questions.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useApp } from "../store";
 import { Card, Button, Tag } from "../ui";
 import { play, vibrate } from "../sound";
@@ -35,18 +35,7 @@ export default function CoachPage() {
 
   const isPaid = plan === "premium";
 
-  // If navigating to Coach tab, ensure we start at landing
-  if (tab === "coach" && coachSubTab !== "landing" && coachSubTab !== "tutor") {
-    setCoachSubTab("landing");
-  }
-
-  // Render dedicated AI Tutor page if sub-tab is tutor
-  if (coachSubTab === "tutor") {
-    return <AiTutorPage />;
-  }
-
-  // ---- Coach Landing Page ----
-
+  // All hooks must be declared before any early returns (React Rules of Hooks).
   const learnerExamDate = learner?.examDate ?? undefined;
   const learnerConfidence = learner?.initialConfidence ?? undefined;
 
@@ -56,6 +45,21 @@ export default function CoachPage() {
   );
   const decision = useMemo(() => getTutorDecision(ctx), [ctx]);
   const startSession = useApp((s) => s.startSession);
+
+  // If navigating to Coach tab, ensure we start at landing.
+  // Moved to useEffect to avoid setState-during-render (React anti-pattern).
+  useEffect(() => {
+    if (tab === "coach" && coachSubTab !== "landing" && coachSubTab !== "tutor") {
+      setCoachSubTab("landing");
+    }
+  }, [tab, coachSubTab, setCoachSubTab]);
+
+  // Render dedicated AI Tutor page if sub-tab is tutor
+  if (coachSubTab === "tutor") {
+    return <AiTutorPage />;
+  }
+
+  // ---- Coach Landing Page ----
 
   const handleConsent = () => { setAiConsent(true); setAiConsentState(true); };
 

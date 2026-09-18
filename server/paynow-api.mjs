@@ -19,21 +19,21 @@ const contentData = JSON.parse(
 
 // Topic keyword map for server-side retrieval
 const TOPIC_KEYWORDS = {
-  "road-signs": ["sign", "signs", "regulatory", "warning", "information", "guide", "road sign", "prohibition", "mandatory"],
-  "road-markings": ["marking", "markings", "line", "lines", "lane", "road marking", "painted", "double", "solid", "dashed"],
-  "junction-rules": ["junction", "intersection", "roundabout", "turn", "turning", "give way", "right of way", "who goes first", "crossroad", "yield", "priority"],
-  "traffic-lights": ["traffic light", "traffic lights", "signal", "signals", "stop light", "robot", "robots"],
-  "speed-limits": ["speed", "speed limit", "km/h", "kilometres per hour"],
-  "overtaking": ["overtake", "overtaking", "passing", "pass", "safe to overtake"],
-  "parking": ["park", "parking", "stopped", "stopping", "stand", "standing"],
-  "pedestrian-safety": ["pedestrian", "crossing", "zebra", "walk", "walking", "cyclist", "bicycle"],
-  "vehicle-equipment": ["equipment", "tyre", "tyres", "tire", "brake", "lights", "vehicle condition", "spare", "fire extinguisher"],
-  "vehicle-classes": ["class", "classes", "vehicle class", "licence class", "category", "psv", "driving licence", "licence", "license", "learner", "learner's", "requirement", "application", "test"],
-  "towing-loads": ["tow", "towing", "load", "loads", "trailer", "cargo"],
-  "accident-procedures": ["accident", "crash", "collision", "breakdown", "emergency", "incident", "first aid"],
-  "alcohol-drugs": ["alcohol", "drug", "drugs", "drunk", "drink driving", "dui", "intoxication", "blood alcohol"],
-  "night-driving": ["night", "headlight", "headlights", "visibility", "dark", "dipped", "fog", "rain"],
-  "general-rules": ["rule", "rules", "regulation", "law", "road rule", "general rule", "roadcraft", "seatbelt", "horn", "insurance", "defensive", "hazard", "hazards", "safe distance", "following distance", "cell", "cells", "road cell"],
+  "road-signs": ["sign", "signs", "regulatory", "warning", "information", "guide", "road sign", "prohibition", "mandatory", "circular", "diamond", "triangular"],
+  "road-markings": ["marking", "markings", "line", "lines", "lane", "road marking", "painted", "double", "dashed", "broken yellow", "painted island", "diverging lane"],
+  "junction-rules": ["junction", "intersection", "roundabout", "turn", "turning", "give way", "right of way", "who goes first", "goes first", "crossroad", "yield", "priority"],
+  "traffic-lights": ["traffic light", "traffic lights", "signal", "signals", "stop light", "robot", "robots", "red light", "green light", "flashing amber"],
+  "speed-limits": ["speed", "speed limit", "km/h", "kilometres per hour", "how fast", "maximum speed"],
+  "overtaking": ["overtake", "overtaking", "passing", "pass", "safe to overtake", "overtake on"],
+  "parking": ["park", "parking", "stopping", "stand", "standing", "allowed to stop"],
+  "pedestrian-safety": ["pedestrian", "crossing", "zebra", "walk", "walking", "cyclist", "bicycle", "cycling", "cyclist safety", "pedestrian right", "pedal cyclist"],
+  "vehicle-equipment": ["equipment", "tyre", "tyres", "tire", "brake", "lights", "vehicle condition", "spare", "fire extinguisher", "seat belt", "use my horn", "hooter", "seatbelt"],
+  "vehicle-classes": ["class", "classes", "vehicle class", "licence class", "category", "psv", "driving licence", "licence", "license", "learner", "learner's", "requirement", "application", "test", "minimum age", "age requirement", "how old to drive"],
+  "towing-loads": ["tow", "towing", "load", "loads", "trailer", "cargo", "towing requirements"],
+  "accident-procedures": ["accident", "crash", "collision", "breakdown", "emergency", "incident", "first aid", "bleeding", "accident reporting"],
+  "alcohol-drugs": ["alcohol", "drug", "drugs", "drunk", "drink driving", "dui", "intoxication", "blood alcohol", "drink and drive", "drinking and driving", "under the influence"],
+  "night-driving": ["night", "headlight", "headlights", "visibility", "dark", "dipped", "fog", "rain", "adverse weather", "rainy weather"],
+  "general-rules": ["rule", "rules", "regulation", "law", "road rule", "general rule", "roadcraft", "insurance", "defensive", "hazard", "hazards", "safe distance", "following distance", "cell", "cells", "road cell", "aquaplaning", "reaction time", "reaction distance", "stopping distance", "skidding", "side of the road", "drive on"],
 };
 
 const VALID_TOPIC_IDS = new Set(contentData.topics.map((t) => t.id));
@@ -51,9 +51,35 @@ for (const q of contentData.questions) {
 }
 
 /**
+ * Check if a keyword matches in text. For short keywords (<=4 chars),
+ * uses word-boundary matching to avoid substring false positives.
+ */
+function matchesKeyword(text, keyword) {
+  if (keyword.length <= 4) {
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`\\b${escaped}\\b`);
+    return regex.test(text);
+  }
+  return text.includes(keyword);
+}
+
+/**
  * Score a text against topic keywords and return the best matching topic.
+ * Multi-word phrases score 2 points, single words score 1 point.
+ * Short keywords use word-boundary matching.
+ * Topic-name bonus: if the topic name appears in the query, +3 points.
+ * Tiebreaker: specific topics beat general-rules on equal scores.
  */
 function matchTopic(text) {
+  return matchTopicWithScore(text).topic;
+}
+
+/**
+ * Match topic with confidence score.
+ * Score >= 2 = strong match (phrase or multiple keywords).
+ * Score 1 = weak match (single keyword only).
+ */
+function matchTopicWithScore(text) {
   const lower = text.toLowerCase();
   let bestTopic = null;
   let bestScore = 0;
@@ -61,14 +87,20 @@ function matchTopic(text) {
     if (!VALID_TOPIC_IDS.has(topicId)) continue;
     let score = 0;
     for (const kw of keywords) {
-      if (lower.includes(kw)) score++;
+      if (matchesKeyword(lower, kw)) {
+        score += kw.includes(" ") ? 2 : 1;
+      }
     }
-    if (score > bestScore) {
+    const topicName = topicId.replace(/-/g, " ");
+    if (lower.includes(topicName)) {
+      score += 3;
+    }
+    if (score > bestScore || (score === bestScore && score > 0 && bestTopic === "general-rules" && topicId !== "general-rules")) {
       bestScore = score;
       bestTopic = topicId;
     }
   }
-  return bestScore > 0 ? bestTopic : null;
+  return { topic: bestScore > 0 ? bestTopic : null, score: bestScore };
 }
 
 /**
@@ -130,10 +162,87 @@ function retrieveForConcept(concept, topicId) {
  * D10: Detect topic switches from conversation history.
  * Returns the inferred topic from recent messages.
  */
+/**
+ * Detect the current topic from conversation history.
+ *
+ * Uses per-message scoring with role-based weights:
+ *   1. CURRENT USER MESSAGE: Scored independently. If it has a STRONG match
+ *      (score >= 2) or is a DIRECT new question (not a context-dependent
+ *      follow-up), that topic wins — the user is switching.
+ *   2. WEIGHTED HISTORY: All messages scored independently, then combined
+ *      with weights (user=2, AI=1). User intent dominates.
+ *   3. AI RESPONSES: Never dominant — only contribute weak context (weight 1).
+ *
+ * Follow-up detection: phrases like "what about", "how about", "what if"
+ * reference previous context and should use history, even if they contain
+ * a topic keyword (e.g. "What about at night?" in a parking conversation
+ * means parking-at-night, not night-driving).
+ *
+ * This prevents:
+ *   - AI responses introducing adjacent-topic keywords
+ *   - Vague follow-ups overriding established topic context
+ *   - While still allowing intentional topic switches
+ */
 function detectConversationTopic(conversationHistory) {
   if (!Array.isArray(conversationHistory) || conversationHistory.length === 0) return null;
-  const recentTexts = conversationHistory.slice(-4).map((m) => m.text).join(" ");
-  return matchTopic(recentTexts);
+
+  const recent = conversationHistory.slice(-6);
+  const len = recent.length;
+  const currentMsg = recent[len - 1];
+
+  // If current message is from user, check for a strong topic match
+  if (currentMsg.role === "user") {
+    const { topic: currentTopic, score: currentScore } = matchTopicWithScore(currentMsg.text);
+
+    // Detect context-dependent follow-ups (reference previous context)
+    const trimmed = currentMsg.text.trim().toLowerCase();
+    const isFollowUp = /^(what about|how about|what if|what about that|how about that|what about them|what about it|what about there)/.test(trimmed);
+
+    // Strong match (score >= 2) or direct question with a topic match: switch
+    if (currentTopic && (currentScore >= 2 || !isFollowUp)) return currentTopic;
+
+    // Weak/follow-up match: score all messages independently and combine with weights
+    const topicScores = {};
+    for (let i = 0; i < len - 1; i++) {
+      const msg = recent[i];
+      const weight = msg.role === "user" ? 2 : 1;
+      const { topic, score } = matchTopicWithScore(msg.text);
+      if (topic) {
+        topicScores[topic] = (topicScores[topic] || 0) + score * weight;
+      }
+    }
+
+    let bestTopic = null;
+    let bestScore = 0;
+    for (const [topic, total] of Object.entries(topicScores)) {
+      if (total > bestScore || (total === bestScore && bestTopic === "general-rules" && topic !== "general-rules")) {
+        bestScore = total;
+        bestTopic = topic;
+      }
+    }
+
+    return bestTopic || currentTopic;
+  }
+
+  // Current message is from AI — score all messages independently with weights
+  const topicScores = {};
+  for (const msg of recent) {
+    const weight = msg.role === "user" ? 2 : 1;
+    const { topic, score } = matchTopicWithScore(msg.text);
+    if (topic) {
+      topicScores[topic] = (topicScores[topic] || 0) + score * weight;
+    }
+  }
+
+  let bestTopic = null;
+  let bestScore = 0;
+  for (const [topic, total] of Object.entries(topicScores)) {
+    if (total > bestScore || (total === bestScore && bestTopic === "general-rules" && topic !== "general-rules")) {
+      bestScore = total;
+      bestTopic = topic;
+    }
+  }
+  return bestTopic;
 }
 
 // Load env from .env file

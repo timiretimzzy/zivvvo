@@ -121,28 +121,60 @@ export function qidToTopicMap(pack: ContentPack): Map<string, string> {
 // ---------------------------------------------------------------------------
 
 const TOPIC_KEYWORDS: Record<string, string[]> = {
-  "road-signs": ["sign", "signs", "regulatory", "warning", "information", "guide", "road sign", "prohibition", "mandatory"],
-  "road-markings": ["marking", "markings", "line", "lines", "lane", "road marking", "painted", "double", "solid", "dashed"],
-  "junction-rules": ["junction", "intersection", "roundabout", "turn", "turning", "give way", "right of way", "who goes first", "crossroad", "yield", "priority"],
-  "traffic-lights": ["traffic light", "traffic lights", "signal", "signals", "stop light", "robot", "robots"],
-  "speed-limits": ["speed", "speed limit", "km/h", "kilometres per hour"],
-  "overtaking": ["overtake", "overtaking", "passing", "pass", "safe to overtake"],
-  "parking": ["park", "parking", "stopped", "stopping", "stand", "standing"],
-  "pedestrian-safety": ["pedestrian", "crossing", "zebra", "walk", "walking", "cyclist", "bicycle"],
-  "vehicle-equipment": ["equipment", "tyre", "tyres", "tire", "brake", "lights", "vehicle condition", "spare", "fire extinguisher"],
-  "vehicle-classes": ["class", "classes", "vehicle class", "licence class", "category", "psv", "driving licence", "licence", "license", "learner", "learner's", "requirement", "application", "test"],
-  "towing-loads": ["tow", "towing", "load", "loads", "trailer", "cargo"],
-  "accident-procedures": ["accident", "crash", "collision", "breakdown", "emergency", "incident", "first aid"],
-  "alcohol-drugs": ["alcohol", "drug", "drugs", "drunk", "drink driving", "dui", "intoxication", "blood alcohol"],
-  "night-driving": ["night", "headlight", "headlights", "visibility", "dark", "dipped", "fog", "rain"],
-  "general-rules": ["rule", "rules", "regulation", "law", "road rule", "general rule", "roadcraft", "seatbelt", "horn", "insurance", "defensive", "hazard", "hazards", "safe distance", "following distance", "cell", "cells", "road cell"],
+  "road-signs": ["sign", "signs", "regulatory", "warning", "information", "guide", "road sign", "prohibition", "mandatory", "circular", "diamond", "triangular"],
+  "road-markings": ["marking", "markings", "line", "lines", "lane", "road marking", "painted", "double", "dashed", "broken yellow", "painted island", "diverging lane"],
+  "junction-rules": ["junction", "intersection", "roundabout", "turn", "turning", "give way", "right of way", "who goes first", "goes first", "crossroad", "yield", "priority"],
+  "traffic-lights": ["traffic light", "traffic lights", "signal", "signals", "stop light", "robot", "robots", "red light", "green light", "flashing amber"],
+  "speed-limits": ["speed", "speed limit", "km/h", "kilometres per hour", "how fast", "maximum speed"],
+  "overtaking": ["overtake", "overtaking", "passing", "pass", "safe to overtake", "overtake on"],
+  "parking": ["park", "parking", "stopping", "stand", "standing", "allowed to stop"],
+  "pedestrian-safety": ["pedestrian", "crossing", "zebra", "walk", "walking", "cyclist", "bicycle", "cycling", "cyclist safety", "pedestrian right", "pedal cyclist"],
+  "vehicle-equipment": ["equipment", "tyre", "tyres", "tire", "brake", "lights", "vehicle condition", "spare", "fire extinguisher", "seat belt", "use my horn", "hooter", "seatbelt"],
+  "vehicle-classes": ["class", "classes", "vehicle class", "licence class", "category", "psv", "driving licence", "licence", "license", "learner", "learner's", "requirement", "application", "test", "minimum age", "age requirement", "how old to drive"],
+  "towing-loads": ["tow", "towing", "load", "loads", "trailer", "cargo", "towing requirements"],
+  "accident-procedures": ["accident", "crash", "collision", "breakdown", "emergency", "incident", "first aid", "bleeding", "accident reporting"],
+  "alcohol-drugs": ["alcohol", "drug", "drugs", "drunk", "drink driving", "dui", "intoxication", "blood alcohol", "drink and drive", "drinking and driving", "under the influence"],
+  "night-driving": ["night", "headlight", "headlights", "visibility", "dark", "dipped", "fog", "rain", "adverse weather", "rainy weather"],
+  "general-rules": ["rule", "rules", "regulation", "law", "road rule", "general rule", "roadcraft", "insurance", "defensive", "hazard", "hazards", "safe distance", "following distance", "cell", "cells", "road cell", "aquaplaning", "reaction time", "reaction distance", "stopping distance", "skidding", "side of the road", "drive on"],
 };
+
+/**
+ * Check if a keyword matches in text. For short keywords (<=4 chars),
+ * uses word-boundary matching to avoid substring false positives
+ * (e.g. "sign" should not match within "signal" or "designated").
+ */
+function matchesKeyword(text: string, keyword: string): boolean {
+  if (keyword.length <= 4) {
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`\\b${escaped}\\b`);
+    return regex.test(text);
+  }
+  return text.includes(keyword);
+}
 
 /**
  * Find the most relevant topic for a user question using keyword matching.
  * Returns topicId or null if no strong match.
+ *
+ * Scoring: multi-word phrases score 2 points, single words score 1 point.
+ * Short keywords (<=4 chars) use word-boundary matching to prevent
+ * substring false positives (e.g. "sign" in "signal").
+ * Topic-name bonus: if the topic's own name appears in the query,
+ * it receives +3 bonus points (very strong signal).
+ * Tiebreaker: when scores are equal and the current leader is general-rules,
+ * a more specific topic wins.
  */
 export function findRelevantTopic(pack: ContentPack, question: string): string | null {
+  const result = findRelevantTopicWithScore(pack, question);
+  return result.topic;
+}
+
+/**
+ * Find the most relevant topic for a question, returning both topic and score.
+ * Score >= 2 means a strong match (phrase or multiple keywords).
+ * Score 1 means a weak match (single keyword only).
+ */
+export function findRelevantTopicWithScore(pack: ContentPack, question: string): { topic: string | null; score: number } {
   const q = question.toLowerCase();
   const validTopicIds = new Set(pack.topics.map((t) => t.id));
   let bestTopic: string | null = null;
@@ -151,14 +183,20 @@ export function findRelevantTopic(pack: ContentPack, question: string): string |
     if (!validTopicIds.has(topicId)) continue;
     let score = 0;
     for (const kw of keywords) {
-      if (q.includes(kw)) score++;
+      if (matchesKeyword(q, kw)) {
+        score += kw.includes(" ") ? 2 : 1;
+      }
     }
-    if (score > bestScore) {
+    const topicName = topicId.replace(/-/g, " ");
+    if (q.includes(topicName)) {
+      score += 3;
+    }
+    if (score > bestScore || (score === bestScore && score > 0 && bestTopic === "general-rules" && topicId !== "general-rules")) {
       bestScore = score;
       bestTopic = topicId;
     }
   }
-  return bestScore > 0 ? bestTopic : null;
+  return { topic: bestScore > 0 ? bestTopic : null, score: bestScore };
 }
 
 /**

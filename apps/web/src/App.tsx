@@ -142,7 +142,6 @@ function LoginScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const handleSignIn = async () => {
-    console.log("[Zivvvo] Sign-in button clicked, URL:", import.meta.env.VITE_SUPABASE_URL ? "set" : "MISSING");
     setLoading(true);
     setError(null);
     try {
@@ -240,8 +239,15 @@ export default function App() {
           void state.init(user.id);
         }
       } else if (prevAuthUser.current) {
-        // Session expired or signed out — reset app state
-        useApp.getState().signOut();
+        // Session expired or signed out — only clear auth state, NOT local data.
+        // On explicit sign-out, store.signOut() already wiped IndexedDB.
+        // On session expiry (token refresh failure), preserve local data so
+        // cloud restore can recover it on next sign-in.
+        useApp.setState({
+          currentSupabaseUserId: null,
+          plan: "free",
+          planExpiresAt: undefined,
+        });
       }
       prevAuthUser.current = user;
     });

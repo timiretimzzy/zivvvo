@@ -64,9 +64,9 @@ export async function initAuth(): Promise<void> {
       cachedUser = cachedUserFromDb;
     }
   } catch (err) {
-    console.error("[Zivvvo] initAuth failed, will retry:", err);
-    // Don't set initialized — allow retry on next call
-    return;
+    console.error("[Zivvvo] initAuth failed, using offline fallback:", err);
+    // Set initialized so we don't retry forever — the user appears as
+    // not authenticated, which is correct if Supabase is unreachable.
   }
   initialized = true;
 }

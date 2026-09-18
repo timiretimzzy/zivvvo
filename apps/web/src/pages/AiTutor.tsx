@@ -98,7 +98,6 @@ export default function AiTutorPage() {
     setLoading(true);
     setError(null);
     setQuestion("");
-    setChatHistory((prev) => [...prev, { role: "user", text: q }]);
 
     try {
       const rc = ctx.weakestConcepts[0] ?? ctx.developingConcepts[0] ?? null;
@@ -134,10 +133,10 @@ export default function AiTutorPage() {
 
       // D9: Strict — only accept responses from live AI
       if (result.available && result.text.length > 0 && result.source === "generated") {
-        setChatHistory((prev) => [...prev, { role: "ai", text: result.text }]);
+        setChatHistory((prev) => [...prev, { role: "user", text: q }, { role: "ai", text: result.text }]);
         setAiStatus("available");
       } else {
-        // Live AI failed or returned non-AI source — show explicit failure
+        // Live AI failed or returned non-AI source — show explicit failure, don't add user message
         const reason = result.reason ?? "server-error";
         setAiStatus(reason);
         setError(availabilityMessage(reason));

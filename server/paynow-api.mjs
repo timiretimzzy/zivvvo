@@ -328,12 +328,12 @@ async function activatePlan(userId, months) {
 
   const { error } = await supabase
     .from("learner_state")
-    .update({
+    .upsert({
+      user_id: userId,
       plan: "premium",
       plan_expires_at: finalExpiry,
       updated_at: Date.now(),
-    })
-    .eq("user_id", userId);
+    }, { onConflict: "user_id" });
 
   return { error, expiresAt: finalExpiry };
 }

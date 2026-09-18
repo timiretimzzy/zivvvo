@@ -94,6 +94,9 @@ function pushToCloud() {
   void pushLearnerState(learner, reviews, engagement);
 }
 
+// Mutex for init() — prevents concurrent calls from corrupting state
+let initPromise: Promise<void> | null = null;
+
 export const useApp = create<AppStore>((set, get) => ({
   ready: false,
   currentSupabaseUserId: null,
@@ -110,10 +113,13 @@ export const useApp = create<AppStore>((set, get) => ({
   planExpiresAt: undefined,
 
   init: async (authUserId?: string) => {
+    // Mutex: if an init is already in progress, wait for it
+    if (initPromise) return initPromise;
     // Skip if already initialized for this user
     const current = get();
     const targetUserId = authUserId ?? getSupabaseUserId();
     if (current.ready && current.currentSupabaseUserId === (targetUserId ?? null)) return;
+    initPromise = (async () => {
     try {
     await initAuth();
     // Re-check after await: user may have signed out during initAuth
@@ -208,7 +214,10 @@ export const useApp = create<AppStore>((set, get) => ({
     } catch (err) {
       console.error("[Zivvvo] init() failed, falling back to onboarding:", err);
       set({ ready: true, currentSupabaseUserId: null, learners: [], activeLearnerId: null });
+    } finally {
+      initPromise = null;
     }
+    })();
   },
 
   seedDemos: async () => {
@@ -439,27 +448,17 @@ export const useApp = create<AppStore>((set, get) => ({
 
   signOut: async () => {
     dailyGoalRewardedDay = -1;
-    await authSignOut();
+    // Wipe all local IndexedDB data for this user
     await db.learners.clear();
     await db.attempts.clear();
     await db.reviews.clear();
     await db.sessions.clear();
     await db.engagements.clear();
     await db.meta.put({ key: "activeLearner", value: null });
-    set({
-      ready: true,
-      currentSupabaseUserId: null,
-      learners: [],
-      activeLearnerId: null,
-      attempts: [],
-      reviews: [],
-      sessions: [],
-      engagement: initialEngagementState(),
-      activeSession: null,
-      tab: "home",
-      plan: "free",
-      planExpiresAt: undefined,
-    });
+    // Trigger Supabase sign-out — the onAuthStateChange listener will
+    // update auth state (currentSupabaseUserId, plan, etc.) so we don't
+    // duplicate that work here.
+    await authSignOut();
   },
 }));
 
@@ -478,7 +477,6 @@ function checkPlanExpiry() {
     const expiryChanged = ps && ps.planExpiresAt && cur.planExpiresAt &&
       Math.abs(ps.planExpiresAt - cur.planExpiresAt) > 60000; // 1 min tolerance for clock drift
     if (tierChanged || expiryChanged) {
-      console.log("[Zivvvo] Plan updated:", cur.plan, "->", ps.plan);
       useApp.setState({ plan: ps.plan, planExpiresAt: ps.planExpiresAt });
       if (cur.activeLearnerId) {
         void cur.updateLearner(cur.activeLearnerId, { plan: ps.plan, planExpiresAt: ps.planExpiresAt });

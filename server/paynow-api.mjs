@@ -17,6 +17,142 @@ const contentData = JSON.parse(
   fs.readFileSync(path.resolve(__dirname, "../packages/content/src/data/content-v1.json"), "utf8")
 );
 
+// D12: Load Driving Instructor Knowledge Base
+const kbEntries = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, "../packages/ai-tutor-language/kb-entries.json"), "utf8")
+);
+
+// Pre-index KB entries by topic and keyword for fast retrieval
+const kbByTopic = new Map();
+const kbByKeyword = new Map();
+for (const entry of kbEntries) {
+  if (!kbByTopic.has(entry.topicId)) kbByTopic.set(entry.topicId, []);
+  kbByTopic.get(entry.topicId).push(entry);
+  for (const kw of [...entry.keywords, ...entry.aliases, entry.title.toLowerCase()]) {
+    const key = kw.toLowerCase();
+    if (!kbByKeyword.has(key)) kbByKeyword.set(key, []);
+    kbByKeyword.get(key).push(entry);
+  }
+}
+
+/**
+ * D12: Retrieve relevant KB entries for a learner question.
+ * Scores by keyword match, topic match, and title match.
+ * Returns top 5 entries sorted by relevance.
+ */
+function retrieveKB(normalizedText, topicId) {
+  const scores = new Map();
+  const reasons = new Map();
+
+  // Keyword/alias scoring
+  for (const [kw, entries] of kbByKeyword) {
+    if (normalizedText.includes(kw)) {
+      for (const entry of entries) {
+        const prev = scores.get(entry.id) ?? 0;
+        scores.set(entry.id, prev + 2);
+        const r = reasons.get(entry.id) ?? [];
+        r.push(`keyword:${kw}`);
+        reasons.set(entry.id, r);
+      }
+    }
+  }
+
+  // Topic bonus
+  if (topicId && kbByTopic.has(topicId)) {
+    for (const entry of kbByTopic.get(topicId)) {
+      const prev = scores.get(entry.id) ?? 0;
+      scores.set(entry.id, prev + 1);
+      const r = reasons.get(entry.id) ?? [];
+      r.push("topic-match");
+      reasons.set(entry.id, r);
+    }
+  }
+
+  // Sort and return top 5
+  const results = [...scores.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([id, score]) => ({
+      entry: kbEntries.find((e) => e.id === id),
+      score,
+      reason: (reasons.get(id) ?? []).join(", "),
+    }))
+    .filter((r) => r.entry);
+
+  return results;
+}
+
+/**
+ * D12: Build a formatted knowledge block from KB entries for the AI prompt.
+ */
+function buildKBBlock(retrieved) {
+  if (!retrieved || retrieved.length === 0) return "";
+  const lines = [];
+  for (const r of retrieved.slice(0, 3)) {
+    lines.push(`### ${r.entry.title} [${r.entry.topicId}]`);
+    lines.push(r.entry.content);
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+/**
+ * D12: Detect genuine ambiguity in a learner question.
+ * Returns possible meanings when the question is genuinely ambiguous.
+ */
+function detectAmbiguity(text, topicId) {
+  const normalized = text.toLowerCase().trim();
+  const ambiguous = [];
+
+  // "what does X mean" with short/ambiguous subjects
+  const meanMatch = normalized.match(/^what does (the |a |an |this |that )?(\w+) mean/i);
+  if (meanMatch) {
+    const subject = meanMatch[2]?.toLowerCase();
+    const ambiguousSubjects = {
+      "yellow": ["yellow traffic light", "yellow road sign", "yellow road marking", "yellow vehicle plate"],
+      "red": ["red traffic light", "red road sign", "red road marking"],
+      "green": ["green traffic light", "green road sign", "green arrow signal"],
+      "amber": ["amber traffic light", "amber road sign"],
+      "blue": ["blue road sign", "blue parking sign"],
+      "white": ["white road marking", "white line"],
+      "orange": ["orange temporary sign", "orange hazard marking"],
+      "circle": ["circular sign", "roundabout sign"],
+      "triangle": ["triangular warning sign", "yield sign"],
+      "diamond": ["diamond-shaped sign"],
+      "square": ["square information sign", "rectangular sign"],
+      "arrow": ["directional arrow marking", "arrow signal", "lane arrow"],
+      "one": ["one-way sign", "single sign meaning"],
+      "that": [],
+      "this": [],
+      "it": [],
+    };
+    if (subject && ambiguousSubjects[subject]) {
+      ambiguous.push(...ambiguousSubjects[subject]);
+    }
+  }
+
+  // Short vague questions
+  if (normalized.length < 15 && !topicId) {
+    if (/^(what about|how about|what if|what does|what is|explain|tell me)\b/.test(normalized)) {
+      ambiguous.push("Could you specify what you're asking about?");
+    }
+  }
+
+  return ambiguous;
+}
+
+/**
+ * D12: Classify the source/grounding level of a knowledge claim.
+ */
+function classifyGrounding(content) {
+  const lower = content.toLowerCase();
+  if (/zimbabwe|zim|vid|zrp|🇿🇼/.test(lower)) return "verified-zimbabwe-rule";
+  if (/according to zivvvo|zivvvo.*study|zivvvo.*material/.test(lower)) return "zivvvo-exam-content";
+  if (/always|never|must|shall|required|law|regulation|legally/.test(lower)) return "general-driving-principle";
+  if (/recommended|suggested|advised|good practice|best practice|safer/.test(lower)) return "safety-guidance";
+  return "instructor-guidance";
+}
+
 // Topic keyword map for server-side retrieval
 const TOPIC_KEYWORDS = {
   "road-signs": ["sign", "signs", "regulatory", "warning", "information", "guide", "road sign", "prohibition", "mandatory", "circular", "diamond", "triangular"],
@@ -61,6 +197,247 @@ function matchesKeyword(text, keyword) {
     return regex.test(text);
   }
   return text.includes(keyword);
+}
+
+// ---------------------------------------------------------------------------
+// D12: Language Understanding Pipeline
+// Normalization, intent detection, semantic expansion, entity extraction,
+// conversation context resolution, and enhanced topic classification.
+// ---------------------------------------------------------------------------
+
+// Spelling fixes (longest first to avoid partial matches)
+const SPELLING_FIXES = [
+  ["righ of way", "right of way"], ["roght of way", "right of way"],
+  ["rightofway", "right of way"], ["righ or way", "right of way"],
+  ["regulashions", "regulations"], ["overtakeing", "overtaking"],
+  ["overtakin", "overtaking"], ["pedestrain", "pedestrian"],
+  ["pedesrian", "pedestrian"], ["cylist", "cyclist"],
+  ["junciton", "junction"], ["intersecton", "intersection"],
+  ["traffic ligths", "traffic lights"], ["traffic lighs", "traffic lights"],
+  ["trianffic light", "traffic light"], ["seatbelt", "seat belt"],
+  ["lisence", "licence"], ["license", "licence"],
+  ["honn", "horn"], ["miror", "mirror"],
+  ["windscrean", "windscreen"], ["windshield", "windscreen"],
+  ["aquaplaningg", "aquaplaning"], ["aquaplanning", "aquaplaning"],
+  ["hydroplaning", "aquaplaning"], ["emergancy", "emergency"],
+  ["manouvre", "manoeuvre"], ["maneuver", "manoeuvre"],
+  ["compulsary", "compulsory"], ["indicater", "indicator"],
+  ["necesary", "necessary"], ["nessecary", "necessary"],
+].sort((a, b) => b[0].length - a[0].length);
+
+// Zimbabwean terms
+const ZIMBABWEAN_TERMS = [
+  ["robot", "traffic light"], ["robots", "traffic lights"],
+  ["red robot", "red traffic light"], ["green robot", "green traffic light"],
+  ["amber robot", "amber traffic light"], ["hooter", "horn"],
+  ["kombi", "minibus"], ["omnibus", "minibus"],
+  ["commuter omnibus", "minibus"], ["l plates", "learner plate"],
+  ["l-plate", "learner plate"], ["learner plate", "learner plate"],
+  ["reg", "registration"], ["vid", "vehicle inspectorate department"],
+  ["zrp", "zimbabwe republic police"],
+  ["provisional licence", "learner licence"],
+  ["learners licence", "learner licence"], ["learner's licence", "learner licence"],
+];
+
+function normalizeText(raw) {
+  let text = raw.toLowerCase().normalize("NFKC").trim();
+  for (const [wrong, correct] of SPELLING_FIXES) {
+    text = text.split(wrong).join(correct);
+  }
+  for (const [local, canonical] of ZIMBABWEAN_TERMS) {
+    text = text.replace(new RegExp(`\\b${local.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "g"), canonical);
+  }
+  return text.replace(/\s+/g, " ").trim();
+}
+
+// Intent detection patterns
+const INTENT_PATTERNS = [
+  { intent: "definition", patterns: [/^what (is|are|does|do) (a |an |the )?/i, /^define\b/i, /^explain\b/i, /^tell me about\b/i], weight: 1.0 },
+  { intent: "meaning", patterns: [/^what does (this|that|the|a|an)\b.*\bmean/i, /^what do (you|they) call\b/i], weight: 1.0 },
+  { intent: "action", patterns: [/^what should (i|we|the driver|you)\b/i, /^what do (i|we|the driver|you) do\b/i, /^how should (i|we|the driver|you)\b/i, /^what am i supposed to\b/i, /^how (do|should) i (react|respond|handle|deal|approach)\b/i], weight: 1.0 },
+  { intent: "comparison", patterns: [/difference between\b/i, /\bvs\.?\b/i, /\bversus\b/i, /how is .+ different from\b/i, /what'?s the difference\b/i, /compare\b/i], weight: 1.0 },
+  { intent: "procedure", patterns: [/^how do (i|we|you)\b/i, /^how should (i|we|you)\b/i, /^what is the (correct )?way to\b/i, /^steps for\b/i, /^walk me through\b/i], weight: 0.9 },
+  { intent: "legality", patterns: [/^is (it|this|that) (legal|allowed|permitted|okay|ok)\b/i, /^can (i|we|you|a learner)\b/i, /^am i (allowed|permitted) to\b/i, /^may (i|we|you)\b/i, /^do (i|we|you) have to\b/i, /^must (i|we|you)\b/i, /^what (are|is) the rules? for\b/i], weight: 0.9 },
+  { intent: "why", patterns: [/^why\b/i, /^why (do|does|is|are|can|can't|should|must|would)\b/i], weight: 1.0 },
+  { intent: "when", patterns: [/^when (should|can|must|do|does|is|are|would)\b/i, /^at what (point|time|speed)\b/i], weight: 0.9 },
+  { intent: "where", patterns: [/^where (can|should|must|do|does|is|are|would)\b/i], weight: 0.9 },
+  { intent: "which", patterns: [/^which (lane|light|sign|vehicle|car|one|gear|licence|class)\b/i], weight: 0.9 },
+  { intent: "scenario", patterns: [/\bif (i|the|a|there|it|we|you)\b/i, /\bwhat if\b/i, /\bi'?m (approaching|driving|coming|turning)\b/i, /\bat (an? )?(intersection|junction|crossroads|roundabout)\b/i, /\bon a (wet|dry|narrow|steep|busy)\b/i], weight: 0.8 },
+  { intent: "troubleshooting", patterns: [/^my (car|brakes?|steering|tyre|engine|battery|lights?)\b/i, /^the (car|brakes?|engine) (is|feels?|keeps?|won't|doesn't)\b/i], weight: 0.8 },
+  { intent: "exam", patterns: [/\bwill (this|it) come (in|on) (the|my) test\b/i, /what should i study\b/i, /\bquiz me\b/i, /\btest me\b/i], weight: 0.9 },
+  { intent: "follow-up", patterns: [/^(what about|how about|what if)\b/i, /^and\b/i, /^(why|how|when|where|which)\s*\??$/i], weight: 0.7 },
+];
+
+function detectIntent(text) {
+  let best = "general"; let bestW = 0;
+  for (const { intent, patterns, weight } of INTENT_PATTERNS) {
+    for (const p of patterns) {
+      if (p.test(text) && weight > bestW) { best = intent; bestW = weight; break; }
+    }
+  }
+  return best;
+}
+
+// Alias expansion: learner term -> canonical concept
+const ALIAS_MAP = {
+  "who goes first": { canonical: "right of way", topicHint: "junction-rules" },
+  "who goes before": { canonical: "right of way", topicHint: "junction-rules" },
+  "who moves first": { canonical: "right of way", topicHint: "junction-rules" },
+  "who has priority": { canonical: "right of way", topicHint: "junction-rules" },
+  "which car goes first": { canonical: "right of way", topicHint: "junction-rules" },
+  "precedence": { canonical: "right of way", topicHint: "junction-rules" },
+  "give way": { canonical: "right of way", topicHint: "junction-rules" },
+  "yield": { canonical: "right of way", topicHint: "junction-rules" },
+  "warning board": { canonical: "warning sign", topicHint: "road-signs" },
+  "hazard sign": { canonical: "warning sign", topicHint: "road-signs" },
+  "traffic sign": { canonical: "road sign", topicHint: "road-signs" },
+  "traffic signal": { canonical: "traffic light", topicHint: "traffic-lights" },
+  "stop light": { canonical: "traffic light", topicHint: "traffic-lights" },
+  "go past another car": { canonical: "overtaking", topicHint: "overtaking" },
+  "pass a slower vehicle": { canonical: "overtaking", topicHint: "overtaking" },
+  "pull over": { canonical: "parking", topicHint: "parking" },
+  "safety belt": { canonical: "seat belt", topicHint: "vehicle-equipment" },
+  "wing mirror": { canonical: "side mirror", topicHint: "vehicle-equipment" },
+  "turn signal": { canonical: "indicator", topicHint: "vehicle-equipment" },
+  "how fast can i go": { canonical: "speed limit", topicHint: "speed-limits" },
+  "maximum speed": { canonical: "speed limit", topicHint: "speed-limits" },
+  "car slides on water": { canonical: "aquaplaning", topicHint: "night-driving" },
+  "car won't stop properly": { canonical: "brake failure", topicHint: "vehicle-equipment" },
+  "car overheats": { canonical: "overheating", topicHint: "vehicle-equipment" },
+  "how old to drive": { canonical: "age requirement", topicHint: "vehicle-classes" },
+  "crossroads": { canonical: "junction", topicHint: "junction-rules" },
+  "traffic circle": { canonical: "roundabout", topicHint: "junction-rules" },
+  "rotary": { canonical: "roundabout", topicHint: "junction-rules" },
+};
+
+function expandTerms(query) {
+  const results = []; const lower = query.toLowerCase();
+  for (const [phrase, mapping] of Object.entries(ALIAS_MAP)) {
+    if (lower.includes(phrase)) {
+      results.push({ canonical: mapping.canonical, confidence: 0.9, topicHint: mapping.topicHint });
+    }
+  }
+  const seen = new Map();
+  for (const r of results) {
+    const existing = seen.get(r.canonical);
+    if (!existing || r.confidence > existing.confidence) seen.set(r.canonical, r);
+  }
+  return [...seen.values()];
+}
+
+// Scenario detection
+function detectScenario(text) {
+  const participants = [], conditions = [], actions = [], roadFeatures = [];
+  if (/\b(i|me|my|we|you)\b/i.test(text)) participants.push("learner-vehicle");
+  if (/\b(a |the )?(car|vehicle|truck|bus|lorry|van)\b/i.test(text)) participants.push("other-vehicle");
+  if (/\bpedestrian|person|people|walk\b/i.test(text)) participants.push("pedestrian");
+  if (/\bcyclist|bicycle|bike\b/i.test(text)) participants.push("cyclist");
+  if (/\b(raining|rain|wet|heavy rain)\b/i.test(text)) conditions.push("rain");
+  if (/\bnight|dark|darkness\b/i.test(text)) conditions.push("night");
+  if (/\bfog|mist|smoke|dust\b/i.test(text)) conditions.push("low-visibility");
+  if (/\bsteep|hill|slope|gradient\b/i.test(text)) conditions.push("gradient");
+  if (/\bnarrow\b/i.test(text)) conditions.push("narrow-road");
+  if (/\bovertak|pass(ing)?\b/i.test(text)) actions.push("overtaking");
+  if (/\bturn(ing)?\b/i.test(text)) actions.push("turning");
+  if (/\bstop(ped|ping)?\b/i.test(text) && !/\bstopping distance/i.test(text)) actions.push("stopping");
+  if (/\bjunction|intersection|crossroad|t-junction\b/i.test(text)) roadFeatures.push("junction");
+  if (/\broundabout|traffic circle\b/i.test(text)) roadFeatures.push("roundabout");
+  if (/\bcrossing|zebra\b/i.test(text)) roadFeatures.push("crossing");
+  if (/\bbend|curve|corner\b/i.test(text)) roadFeatures.push("bend");
+  if (/\bbridge\b/i.test(text)) roadFeatures.push("bridge");
+  const present = participants.length > 0 || conditions.length > 0 || actions.length > 0 || roadFeatures.length > 0;
+  return { present, participants: participants.length ? participants : undefined, conditions: conditions.length ? conditions : undefined, actions: actions.length ? actions : undefined, roadFeatures: roadFeatures.length ? roadFeatures : undefined };
+}
+
+// Extended topic keywords with expanded learner language
+const EXTENDED_TOPIC_KEYWORDS = {
+  "road-signs": ["sign", "signs", "road sign", "regulatory", "warning", "information", "guide", "prohibition", "mandatory", "circular", "diamond", "triangular", "stop sign", "give way sign", "no entry", "no overtaking", "no parking", "no stopping", "speed sign", "hazard sign", "warning board", "traffic sign", "road symbol", "sign meaning", "triangle sign", "circle sign", "what does this sign mean", "sign recognition", "sign action"],
+  "road-markings": ["marking", "markings", "road marking", "line", "lines", "lane", "painted", "double", "dashed", "broken", "solid line", "continuous line", "double solid", "lane arrow", "stop line", "give-way line", "painted island", "hatching", "chevrons", "yellow line", "white line", "road markings", "what does this line mean"],
+  "junction-rules": ["junction", "intersection", "crossroads", "crossroad", "t-junction", "roundabout", "traffic circle", "rotary", "turn", "turning", "give way", "yield", "right of way", "right-of-way", "priority", "precedence", "who goes first", "who has priority", "who moves first", "goes first", "merging", "joining", "turning right", "turning left", "junction rules"],
+  "traffic-lights": ["traffic light", "traffic lights", "traffic signal", "robot", "robots", "signal", "signals", "stop light", "red light", "green light", "amber light", "flashing amber", "pedestrian signal", "arrow signal", "how do robots work", "what does the robot mean"],
+  "speed-limits": ["speed", "speed limit", "km/h", "how fast", "maximum speed", "legal speed", "speed restriction", "speed zone", "school zone", "appropriate speed", "too fast", "speed control", "speed hump", "traffic calming"],
+  "overtaking": ["overtake", "overtaking", "passing", "pass", "safe to overtake", "overtake on", "go past", "no overtaking", "when can i overtake", "overtaking rules", "can i overtake"],
+  "parking": ["park", "parking", "parked", "stopping", "no parking", "no stopping", "stand", "standing", "allowed to stop", "parking bay", "parking rules", "where can i park", "pull over", "can i park here", "parking near"],
+  "pedestrian-safety": ["pedestrian", "pedestrians", "crossing", "zebra crossing", "pedestrian crossing", "school children", "children", "cyclist", "cyclists", "bicycle", "bike", "cycling", "motorcycle", "motorcyclist", "pedestrian safety", "vulnerable road user", "sharing the road"],
+  "vehicle-equipment": ["equipment", "vehicle equipment", "tyre", "tyres", "tire", "brake", "brakes", "lights", "vehicle condition", "seat belt", "seatbelt", "hooter", "horn", "indicator", "mirrors", "windscreen", "wipers", "headlights", "brake lights", "warning lights", "what should i check", "vehicle equipment"],
+  "vehicle-classes": ["class", "classes", "vehicle class", "licence class", "licence", "license", "psv", "driving licence", "learner licence", "provisional licence", "requirement", "minimum age", "age requirement", "how old to drive", "licence requirement", "l plate", "learner plate", "vehicle class"],
+  "towing-loads": ["tow", "towing", "load", "loads", "trailer", "cargo", "towing requirements", "trailer coupling", "heavy load", "overloaded", "overloading", "towing rules", "can i tow"],
+  "accident-procedures": ["accident", "crash", "collision", "breakdown", "emergency", "incident", "first aid", "bleeding", "accident reporting", "report accident", "after an accident", "accident procedure", "what do i do after"],
+  "alcohol-drugs": ["alcohol", "drug", "drugs", "drunk", "drink driving", "intoxication", "blood alcohol", "drink and drive", "under the influence", "medication", "fatigue", "tired", "sleepy", "fitness to drive", "alcohol and driving"],
+  "night-driving": ["night", "night driving", "dark", "darkness", "headlight", "headlights", "visibility", "dipped", "fog", "mist", "rain", "heavy rain", "adverse weather", "wet road", "slippery", "aquaplaning", "hydroplaning", "glare", "poor visibility", "what lights at night"],
+  "general-rules": ["rule", "rules", "regulation", "law", "road rule", "roadcraft", "insurance", "defensive", "defensive driving", "hazard", "hazards", "safe distance", "following distance", "stopping distance", "reaction time", "skidding", "side of the road", "drive on", "left-hand traffic", "observation", "anticipation", "blind spot", "hazard perception", "mirror use", "lane discipline", "courtesy", "road rage", "distraction", "what should i check before driving"],
+};
+
+// Conversation reference resolution
+const FOLLOW_UP_PATTERNS = [
+  /^(what about|how about|what if)\b/i,
+  /^(and|or|but)\s+(what about|how about|why|when|where|which|if|the|those|these)\b/i,
+  /^(and|or|but)\s+(regulatory|mandatory|warning|information|at night|in rain)\b/i,
+  /^(why|how|when|where|which)\s*\??$/i,
+  /^(explain|tell me more|go deeper|make it easier|give examples?)\b/i,
+];
+
+function isFollowUp(text) {
+  return FOLLOW_UP_PATTERNS.some((p) => p.test(text.trim().toLowerCase()));
+}
+
+function resolveReferences(currentMessage, conversationHistory) {
+  const trimmed = currentMessage.trim().toLowerCase();
+  if (currentMessage.length > 20 && !isFollowUp(currentMessage)) {
+    return { resolvedTopic: null, resolvedEntity: null, isContextual: false };
+  }
+  const isContextual = isFollowUp(currentMessage) || /^(that|those|them|it|this|there)\b/i.test(trimmed) || trimmed.length < 15;
+  if (!isContextual) return { resolvedTopic: null, resolvedEntity: null, isContextual: false };
+
+  const recent = conversationHistory.slice(-6);
+  let resolvedTopic = null;
+  for (const msg of [...recent].reverse()) {
+    if (msg.role !== "user") continue;
+    const lower = msg.text.toLowerCase();
+    const m = lower.match(/\b(signs?|road signs?|warning signs?|regulatory signs?|junctions?|right of way|traffic lights?|robots?|speed|overtaking|parking|pedestrians?|cyclists?|markings?|lines?|lane|licen[cs]e|alcohol|drugs?|night driving|rain|fog)\b/);
+    if (m) { resolvedTopic = m[0]; break; }
+  }
+  let resolvedEntity = null;
+  const aiMsgs = recent.filter((m) => m.role === "ai");
+  if (aiMsgs.length > 0) {
+    const lastAi = aiMsgs[aiMsgs.length - 1].text.toLowerCase();
+    const em = lastAi.match(/\b(warning signs?|regulatory signs?|stop signs?|give way|right of way|junctions?|roundabouts?|traffic lights?|robots?|speed limits?|overtaking|parking|pedestrians?|cyclists?|markings?|seat belts?|brakes?|tyres?|headlights?)\b/);
+    if (em) resolvedEntity = em[0];
+  }
+  return { resolvedTopic, resolvedEntity, isContextual };
+}
+
+/**
+ * Enhanced topic classification with conversation context.
+ * Combines current message scoring + conversation context + alias expansion.
+ */
+function classifyTopicEnhanced(text, conversationHistory) {
+  const normalized = normalizeText(text);
+
+  // Direct classification
+  const direct = matchTopicWithScore(normalized);
+
+  // Expanded terms
+  const expansions = expandTerms(normalized);
+  const expansionTopic = expansions.length > 0
+    ? (() => { const counts = {}; for (const e of expansions) { if (e.topicHint) counts[e.topicHint] = (counts[e.topicHint] || 0) + 1; } let best = null, bestS = 0; for (const [t, s] of Object.entries(counts)) { if (s > bestS) { bestS = s; best = t; } } return best; })()
+    : null;
+
+  // Conversation context
+  const refs = resolveReferences(text, conversationHistory || []);
+  let contextTopic = null;
+  if (refs.resolvedTopic) {
+    const r = matchTopicWithScore(refs.resolvedTopic);
+    contextTopic = r.topic;
+  }
+
+  // If it's a follow-up and direct match is weak, use conversation context
+  const isShort = text.length < 25 || isFollowUp(text);
+  if (isShort && direct.score < 2 && (contextTopic || expansionTopic)) {
+    return contextTopic || expansionTopic;
+  }
+
+  return direct.topic || expansionTopic || contextTopic;
 }
 
 /**
@@ -108,17 +485,10 @@ function matchTopicWithScore(text) {
  * Returns an object with topic info, example questions, and explanations.
  */
 function retrieveForQuestion(learnerQuestion, conversationHistory) {
-  const topicId = matchTopic(learnerQuestion);
+  const topicId = classifyTopicEnhanced(learnerQuestion, conversationHistory);
   const result = { topicLabel: null, concepts: [], exampleQuestions: [], topicSummary: null };
 
-  // Also check conversation history for topic context
-  let historyTopic = null;
-  if (Array.isArray(conversationHistory) && conversationHistory.length > 0) {
-    const recentTexts = conversationHistory.slice(-4).map((m) => m.text).join(" ");
-    historyTopic = matchTopic(recentTexts);
-  }
-
-  const effectiveTopic = topicId || historyTopic;
+  const effectiveTopic = topicId;
   if (!effectiveTopic) return result;
 
   const topic = contentData.topics.find((t) => t.id === effectiveTopic);
@@ -655,55 +1025,82 @@ app.get("/api/paynow/status", rateLimit(30), verifyAuth, async (req, res) => {
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash";
 
-const AI_SYSTEM_PROMPT = `You are Zivvvo's AI driving-theory tutor for Zimbabwe's Class 2 learner's licence exam.
+const AI_SYSTEM_PROMPT = `You are a knowledgeable driving instructor for Zimbabwe's Class 2 learner's licence, working through the Zivvvo app.
 
-IDENTITY & SCOPE:
-You help learners prepare for the Zimbabwe Class 2 learner's licence theory exam. You may discuss any learner's licence study topic that Zivvvo covers, including: road signs, road markings, junction rules, traffic lights, speed limits, overtaking, parking, pedestrian safety, vehicle equipment, vehicle classes, towing and loads, accident procedures, alcohol and drugs, night driving, general driving rules, and learner's licence requirements.
-
-GROUNDING RULES — CRITICAL:
-- The <retrieved_content> section contains authoritative Zivvvo study material. Always ground your response in this material.
-- If the retrieved content contains questions with explanations and correct answers, use them to guide your response. Never contradict the correct answers shown.
-- If the retrieved content is empty or insufficient for the question, say: "I don't have enough verified Zivvvo study material to answer that reliably. Check the study material for this topic in the app."
-- Never invent Zimbabwe driving laws or regulations not present in the retrieved content.
-- Never fabricate citations, legal references, or official sources.
-- When explaining a rule, reference the specific Zivvvo content when available (e.g., "According to Zivvvo's study material...").
-- If a correct answer is shown in the retrieved content, confirm it clearly. The learner may be asking to verify their understanding.
-
-CONVERSATION RULES:
-- Follow the learner's conversation naturally. If they ask a follow-up question, answer it in context.
-- A question about "other types of signs" after discussing "regulatory signs" is clearly about road signs — answer it.
-- Learners may switch topics at any time. Answer their current question, regardless of what was discussed before.
-- If the topic has clearly changed from the previous messages, acknowledge the new topic and answer accordingly.
-- The learner context (weaknesses, strengths) is personalization — it tells you what they need help with, but does NOT restrict what they can ask about.
-
-TOPIC SWITCHING:
-- If the learner asks about a different topic than what was discussed, treat it as a fresh question on the new topic.
-- Use the <retrieved_content> for the new topic to answer — do not carry over rules from the previous topic.
-- If the question is ambiguous, ask a brief clarifying question before answering.
-
-INTELLIGENCE BOUNDARIES — NEVER:
-- Determine mastery, weakness, readiness, or correctness
-- Select questions or scores
-- Claim the learner passed or failed
-- Override the deterministic engine
-
-TEACHING STYLE:
-- Concise, friendly, clear
-- Zimbabwe-specific where supported by supplied content
-- Phone-friendly — readable on a small screen
-- Explain rather than lecture
-- Use examples when helpful
-- Vary your response structure — do NOT end every response with "Remember this:"
-- For simple questions, give simple answers — do not over-answer
-- Use natural phrasing like "The key idea is..." or "For the exam, focus on..." only when genuinely helpful
-- When the learner is confused, break the concept down into simpler parts
+IDENTITY:
+You are an experienced Zimbabwe driving instructor — not a chatbot, not a question bank. You teach with the authority of someone who has guided hundreds of learners through their licence.
 
 RESPONSE FORMAT:
-- Use plain text, no markdown headers
-- Keep explanations under 200 words for simple answers, expand slightly for complex topics
-- Use simple language suitable for a learner driver
-- If the learner asks something unrelated to driving theory, politely redirect to exam preparation
-- If the learner asks about something not in the retrieved content, be honest about what Zivvvo covers vs what you cannot verify`;
+Use Markdown formatting naturally:
+- **Bold** for key terms and rules
+- Bullet lists for multiple points
+- Numbered lists for steps/procedures
+- > Blockquotes for important rules or warnings
+- Tables when comparing concepts
+- ## Headings for longer explanations with multiple sections
+Keep responses readable on a phone screen.
+
+SOURCE HIERARCHY — CRITICAL:
+The <driving_knowledge> section contains verified Zimbabwe driving instructor knowledge. Use it as your primary teaching source.
+The <retrieved_content> section contains Zivvvo exam material. Use it for exam-specific questions.
+When answering, clearly distinguish:
+- **Zimbabwe law/regulation** — cite it as law (e.g., "In Zimbabwe, the law requires...")
+- **Exam material** — cite as Zivvvo study content
+- **General driving principle** — frame as general knowledge (e.g., "As a general principle...")
+- **Safety advice** — frame as guidance (e.g., "For safety, I recommend...")
+- **Instructor knowledge** — frame as teaching (e.g., "From experience teaching learners...")
+
+Never present general driving conventions as Zimbabwe law unless you have specific evidence.
+Never invent Zimbabwe legal rules from international knowledge.
+
+AMBIGUITY:
+If a question is genuinely ambiguous (e.g., "What does yellow mean?"), ask a focused clarification:
+- "Do you mean a yellow traffic light, yellow road sign, or yellow road marking?"
+Do NOT over-clarify obvious questions. "What is aquaplaning?" is clear — answer it.
+
+SCENARIO REASONING:
+For scenario questions (rain, night, junction, mechanical problems), decompose before answering:
+1. What is the situation?
+2. What controls or hazards are present?
+3. What is the immediate priority?
+4. What are the correct actions in order?
+5. What should be avoided?
+
+Then give the answer as a clear, ordered procedure.
+
+INSTRUCTOR BEHAVIOUR:
+- Answer directly for simple questions
+- Go deeper for complex scenarios
+- Vary your response structure (don't always use numbered lists)
+- Teach terminology naturally: "The driving term for this is **right of way**..."
+- Preserve Zimbabwean terms: "robot (traffic light)" is fine once
+- For mechanical questions: distinguish possible causes from confirmed diagnoses
+- Never claim certainty you don't have
+- When you're not sure, say so
+
+WHAT YOU CAN TEACH:
+- Road signs, markings, signals
+- Junction rules, right of way, priority
+- Speed limits, overtaking, parking
+- Pedestrian and cyclist safety
+- Vehicle equipment, maintenance, tyre care
+- Accident procedures, emergency response
+- Night driving, adverse weather, aquaplaning
+- Vehicle dynamics (understeer, oversteer, ABS, braking)
+- Defensive driving, hazard perception
+- Licence requirements, vehicle classes
+- Engine braking, manual/automatic transmission
+- Driver fatigue, distraction, psychology
+
+SAFETY BOUNDARIES — NEVER:
+- Inspect or certify a vehicle
+- Diagnose mechanical faults with certainty
+- Guarantee legality without jurisdictional context
+- Replace professional mechanical inspection
+- Certify a learner as legally licensed
+- Present yourself as an official authority
+
+Keep explanations under 200 words for simple answers. Expand for complex scenarios. Use language a learner driver can understand.`;
 
 // In-memory rate limit for AI requests (per IP)
 const aiRateBuckets = new Map();
@@ -817,6 +1214,11 @@ app.post("/api/ai/explain", aiRateLimit(10), verifyAuth, verifyEntitlement, asyn
     // D10: Retrieve relevant content for this concept
     const conceptRetrieval = retrieveForConcept(concept, null);
 
+    // D12: Retrieve from Driving Instructor KB
+    const normalizedConcept = normalizeText(conceptLabel || concept);
+    const kbResults = retrieveKB(normalizedConcept, null);
+    const kbBlock = buildKBBlock(kbResults);
+
     const learnerContextParts = [
       `Concept: ${conceptLabel}`,
       topicLabel ? `Topic: ${topicLabel}` : null,
@@ -834,6 +1236,7 @@ app.post("/api/ai/explain", aiRateLimit(10), verifyAuth, verifyEntitlement, asyn
     const sections = [];
     if (historyBlock) sections.push(`<conversation_context>\n${historyBlock}\n</conversation_context>`);
     sections.push(`<learner_context>\n${learnerContextParts}\n</learner_context>`);
+    if (kbBlock) sections.push(`<driving_knowledge>\n${kbBlock}\n</driving_knowledge>`);
     if (retrievedBlock) sections.push(`<retrieved_content>\n${retrievedBlock}\n</retrieved_content>`);
     sections.push(`<current_question>\nExplain this concept to the learner.\n</current_question>`);
 
@@ -877,9 +1280,23 @@ app.post("/api/ai/ask", aiRateLimit(10), verifyAuth, verifyEntitlement, async (r
       conceptRetrieval = retrieveForConcept(concept, null);
     }
 
+    // D12: Language understanding pipeline
+    const normalized = normalizeText(question);
+    const intent = detectIntent(normalized);
+    const scenario = detectScenario(normalized);
+    const expansions = expandTerms(normalized);
+    const refs = resolveReferences(question, conversationHistory || []);
+
+    // D12: Retrieve from Driving Instructor KB
+    const kbResults = retrieveKB(normalized, currentTopic);
+    const kbBlock = buildKBBlock(kbResults);
+
+    // D12: Detect ambiguity
+    const ambiguity = detectAmbiguity(question, currentTopic);
+
     // D10: Detect topic switch
     const historyTopic = detectConversationTopic(conversationHistory);
-    const currentTopic = matchTopic(question);
+    const currentTopic = classifyTopicEnhanced(question, conversationHistory);
     const topicSwitched = historyTopic && currentTopic && historyTopic !== currentTopic;
 
     const learnerContextParts = [];
@@ -901,9 +1318,27 @@ app.post("/api/ai/ask", aiRateLimit(10), verifyAuth, verifyEntitlement, async (r
     }
     const retrievedBlock = buildRetrievedContentBlock(mergedRetrieval);
 
+    // D12: Build language understanding block
+    const langParts = [];
+    langParts.push(`Intent: ${intent}`);
+    if (currentTopic) langParts.push(`Detected topic: ${currentTopic}`);
+    if (scenario.present) {
+      if (scenario.participants) langParts.push(`Participants: ${scenario.participants.join(", ")}`);
+      if (scenario.conditions) langParts.push(`Conditions: ${scenario.conditions.join(", ")}`);
+      if (scenario.roadFeatures) langParts.push(`Road features: ${scenario.roadFeatures.join(", ")}`);
+    }
+    if (refs.isContextual) langParts.push("This is a follow-up to the previous conversation.");
+    if (refs.resolvedTopic) langParts.push(`Context topic: ${refs.resolvedTopic}`);
+    if (refs.resolvedEntity) langParts.push(`Referenced entity: ${refs.resolvedEntity}`);
+    if (expansions.length > 0) langParts.push(`Expanded concepts: ${expansions.map((e) => e.canonical).join(", ")}`);
+    if (ambiguity.length > 0) langParts.push(`Possible interpretations: ${ambiguity.join("; ")}`);
+    langParts.push(`Answer confidence: ${kbResults.length > 0 ? "high" : questionRetrieval.exampleQuestions?.length > 0 ? "medium" : "low"}`);
+
     const sections = [];
+    if (langParts.length > 0) sections.push(`<language_understanding>\n${langParts.join("\n")}\n</language_understanding>`);
     if (historyBlock) sections.push(`<conversation_context>\n${historyBlock}\n</conversation_context>`);
     if (learnerContextParts.length > 0) sections.push(`<learner_context>\n${learnerContextParts.join("\n")}\n</learner_context>`);
+    if (kbBlock) sections.push(`<driving_knowledge>\n${kbBlock}\n</driving_knowledge>`);
     if (retrievedBlock) sections.push(`<retrieved_content>\n${retrievedBlock}\n</retrieved_content>`);
 
     let questionText = question;

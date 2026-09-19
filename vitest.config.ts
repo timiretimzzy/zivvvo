@@ -8,6 +8,7 @@ export default defineConfig({
       "@zivvvo/learning-engine": path.resolve(__dirname, "packages/learning-engine/src/index.ts"),
       "@zivvvo/assessment-engine": path.resolve(__dirname, "packages/assessment-engine/src/index.ts"),
       "@zivvvo/ai-gateway": path.resolve(__dirname, "packages/ai-gateway/src/index.ts"),
+      "@zivvvo/ai-tutor-language": path.resolve(__dirname, "packages/ai-tutor-language/src/index.ts"),
     },
   },
   test: {

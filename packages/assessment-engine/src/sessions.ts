@@ -9,6 +9,12 @@ import { poolForDifficulty, type DifficultyMode } from "./difficulty";
 import { composeVariant, variantSeed, type VariantQuestion } from "./variants";
 import { computeStat } from "@zivvvo/learning-engine";
 import type { DynamicMockConfig } from "./mock";
+import {
+  buildSelectionState,
+  composeSession,
+  computeTopicWeights,
+  DEFAULT_SELECTION_CONFIG,
+} from "./selection";
 
 export interface SessionGenContext {
   pack: ContentPack;
@@ -152,35 +158,60 @@ export function buildDiagnostic(ctx: SessionGenContext, config: LearningConfig):
   const pack = ctx.pack;
   const size = config.diagnosticSize;
   const all = contentPool(pack);
-  let budget = size;
-  const picked: Question[] = [];
+  const now = ctx.now ?? Date.now();
+
+  const selectionState = buildSelectionState(
+    pack,
+    ctx.attempts,
+    [],
+    ctx.seed ?? Date.now(),
+    now,
+    size,
+  );
+
+  // Stratified: distribute across content topics with slight weakness emphasis
   const topics = [...contentTopics(pack)].sort(
     (a, b) => CONTENT_ORDER_PREF.indexOf(a) - CONTENT_ORDER_PREF.indexOf(b),
   );
-  const perTopic = Math.max(2, Math.floor(size / topics.length));
+  const perTopic = Math.max(1, Math.floor(size / topics.length));
+  let budget = size;
+  const picked: Question[] = [];
+
   for (const t of topics) {
     const inTopic = all.filter((q) => q.topicId === t);
     const want = Math.min(perTopic, budget, inTopic.length);
-    const chosen = sample(pack, ctx, config, inTopic, want);
+    if (want <= 0) continue;
+    const topicState = { ...selectionState, selected: picked, sessionSize: size };
+    for (const q of picked) {
+      topicState.sessionTopicCounts.set(q.topicId, (topicState.sessionTopicCounts.get(q.topicId) ?? 0) + 1);
+      if (q.concept) topicState.sessionConceptCounts.set(q.concept, (topicState.sessionConceptCounts.get(q.concept) ?? 0) + 1);
+    }
+    const chosen = composeSession(inTopic, topicState, DEFAULT_SELECTION_CONFIG, want);
     picked.push(...chosen);
     budget -= chosen.length;
     if (budget <= 0) break;
   }
+
+  // Fill remaining from best candidates across all topics
   if (budget > 0) {
-    const rest = sample(pack, ctx, config, all.filter((q) => !picked.some((p) => p.qid === q.qid)), budget);
-    picked.push(...rest);
+    const rest = all.filter((q) => !picked.some((p) => p.qid === q.qid));
+    const fillState = { ...selectionState, selected: picked, sessionSize: size };
+    for (const q of picked) {
+      fillState.sessionTopicCounts.set(q.topicId, (fillState.sessionTopicCounts.get(q.topicId) ?? 0) + 1);
+      if (q.concept) fillState.sessionConceptCounts.set(q.concept, (fillState.sessionConceptCounts.get(q.concept) ?? 0) + 1);
+    }
+    picked.push(...composeSession(rest, fillState, DEFAULT_SELECTION_CONFIG, budget));
   }
-  const rng = mulberry32(ctx.seed ?? Date.now());
-  const ordered = seededShuffle(picked, rng).slice(0, size);
+
   return build(
     pack, ctx, "diagnostic", "diagnostic",
     "Diagnostic",
     "A quick check of your starting point across the main topics, so we can personalise everything after.",
-    ordered,
+    picked.slice(0, size),
   );
 }
 
-/** STEP 8 -- Smart practice: weak-first + light reinforcement, avoids repeats. */
+/** STEP 8 -- Smart practice: scoring-based selection with diversity, avoids repeats. */
 export function buildSmartSession(
   ctx: SessionGenContext,
   config: LearningConfig,
@@ -192,24 +223,46 @@ export function buildSmartSession(
   const size = sizeOverride ?? config.sessionSizeSmart;
   let all = poolForDifficulty(contentPool(pack), difficultyMode);
   if (all.length === 0) all = contentPool(pack);
+  const now = ctx.now ?? Date.now();
+
+  // Build selection state with learner history
+  const selectionState = buildSelectionState(
+    pack,
+    ctx.attempts,
+    [], // reviews not available at this level; scored via topic mastery
+    ctx.seed ?? Date.now(),
+    now,
+    size,
+  );
+
   let picked: Question[] = [];
 
   if (targetTopicId) {
+    // Targeted session: allocate majority to target topic
     const target = all.filter((q) => q.topicId === targetTopicId);
-    picked = sample(pack, ctx, config, target, Math.min(size, target.length));
-    const rest = all.filter((q) => q.topicId !== targetTopicId && !picked.some((p) => p.qid === q.qid));
-    const reinf = size - picked.length;
-    if (reinf > 0) picked.push(...sample(pack, ctx, config, rest, reinf));
+    const targetAlloc = Math.min(size, Math.ceil(size * 0.7), target.length);
+    const targetState = { ...selectionState, sessionSize: size };
+    picked = composeSession(target, targetState, DEFAULT_SELECTION_CONFIG, targetAlloc);
+
+    // Fill remaining from other topics, weighted by weakness
+    const otherCandidates = all.filter(
+      (q) => q.topicId !== targetTopicId && !picked.some((p) => p.qid === q.qid),
+    );
+    const otherState = { ...selectionState, selected: picked, sessionSize: size };
+    // Update topic counts from picked
+    for (const q of picked) {
+      otherState.sessionTopicCounts.set(q.topicId, (otherState.sessionTopicCounts.get(q.topicId) ?? 0) + 1);
+      if (q.concept) otherState.sessionConceptCounts.set(q.concept, (otherState.sessionConceptCounts.get(q.concept) ?? 0) + 1);
+    }
+    const remaining = size - picked.length;
+    if (remaining > 0) {
+      picked.push(...composeSession(otherCandidates, otherState, DEFAULT_SELECTION_CONFIG, remaining));
+    }
   } else {
-    const topics = contentTopics(pack);
-    const per = Math.max(2, Math.floor(size / topics.length));
-    for (const t of topics) {
-      const inTopic = all.filter((q) => q.topicId === t);
-      picked.push(...sample(pack, ctx, config, inTopic, per));
-    }
-    if (picked.length < size) {
-      picked.push(...sample(pack, ctx, config, all.filter((q) => !picked.some((p) => p.qid === q.qid)), size - picked.length));
-    }
+    // Mixed session: use sequential scoring with diversity — no per-topic quota
+    // The scoring algorithm (weakness, novelty, coverage) naturally spreads across topics
+    const mixedState = { ...selectionState, sessionSize: size };
+    picked = composeSession(all, mixedState, DEFAULT_SELECTION_CONFIG, size);
   }
 
   const target = pack.topics.find((t) => t.id === targetTopicId);
@@ -219,7 +272,7 @@ export function buildSmartSession(
     target
       ? `Focused practice on ${target.label.replace(/ & /g, " ")} with some reinforcement from other topics.`
       : "A short mixed session chosen from your current learning state.",
-    sample(pack, ctx, config, picked, size),
+    picked.slice(0, size),
   );
 }
 
@@ -328,41 +381,69 @@ export function buildMistakeReviewSession(
 /** STEP 12 -- Mock exam from a blueprint: balanced coverage, no answer reveals mid-run logic (UI concern). */
 export function buildMockSession(
   ctx: SessionGenContext,
-  config: LearningConfig,
+  _config: LearningConfig,
   mock: MockConfig,
 ): SessionResult {
   const pack = ctx.pack;
   const all = contentPool(pack);
+  const now = ctx.now ?? Date.now();
   const rng = mulberry32(ctx.seed ?? Date.now());
+
+  const selectionState = buildSelectionState(
+    pack,
+    ctx.attempts,
+    [],
+    ctx.seed ?? Date.now(),
+    now,
+    mock.questionCount,
+  );
+
   let picked: Question[] = [];
 
   if (mock.topicMix === "balanced") {
+    // Balanced mock: weight topics proportionally, emphasize breadth
     const topics = seededShuffle([...contentTopics(pack)], rng);
-    const per = Math.max(2, Math.floor(mock.questionCount / topics.length));
+    const topicWeights = computeTopicWeights(selectionState.topicMastery, topics);
+    const totalWeight = [...topicWeights.values()].reduce((s, v) => s + v, 0);
+
     for (const t of topics) {
       const inTopic = all.filter((q) => q.topicId === t);
-      const want = Math.min(per, mock.questionCount - picked.length);
-      if (want <= 0) break;
-      const sampled = sample(pack, ctx, config, inTopic, want, false);
-      for (const q of sampled) {
+      const weight = topicWeights.get(t) ?? 1;
+      const want = Math.min(inTopic.length, Math.floor(mock.questionCount * (weight / totalWeight)));
+      if (want <= 0) continue;
+      const topicState = { ...selectionState, selected: picked, sessionSize: mock.questionCount };
+      for (const q of picked) {
+        topicState.sessionTopicCounts.set(q.topicId, (topicState.sessionTopicCounts.get(q.topicId) ?? 0) + 1);
+        if (q.concept) topicState.sessionConceptCounts.set(q.concept, (topicState.sessionConceptCounts.get(q.concept) ?? 0) + 1);
+      }
+      const chosen = composeSession(inTopic, topicState, DEFAULT_SELECTION_CONFIG, want);
+      for (const q of chosen) {
         if (picked.length >= mock.questionCount) break;
         if (canAddToSession(picked, q)) picked.push(q);
       }
     }
   } else {
-    picked = sample(pack, ctx, config, all, mock.questionCount, false);
+    // Non-balanced: score-based selection across all topics
+    const state = { ...selectionState, sessionSize: mock.questionCount };
+    picked = composeSession(all, state, DEFAULT_SELECTION_CONFIG, mock.questionCount);
   }
 
+  // Fill remaining if needed
   if (picked.length < mock.questionCount) {
     const rest = all.filter((q) => !picked.some((p) => p.qid === q.qid));
-    const fill = sample(pack, ctx, config, rest, mock.questionCount - picked.length, false);
+    const fillState = { ...selectionState, selected: picked, sessionSize: mock.questionCount };
+    for (const q of picked) {
+      fillState.sessionTopicCounts.set(q.topicId, (fillState.sessionTopicCounts.get(q.topicId) ?? 0) + 1);
+      if (q.concept) fillState.sessionConceptCounts.set(q.concept, (fillState.sessionConceptCounts.get(q.concept) ?? 0) + 1);
+    }
+    const fill = composeSession(rest, fillState, DEFAULT_SELECTION_CONFIG, mock.questionCount - picked.length);
     for (const q of fill) {
       if (picked.length >= mock.questionCount) break;
       if (canAddToSession(picked, q)) picked.push(q);
     }
   }
 
-  const ordered = seededShuffle(picked, rng).slice(0, mock.questionCount);
+  const ordered = picked.slice(0, mock.questionCount);
   const result = build(
     pack, ctx, "mock", "mock",
     "Mock Exam",

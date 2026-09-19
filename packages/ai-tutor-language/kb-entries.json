@@ -1,0 +1,1037 @@
+[
+  {
+    "id": "KB-001",
+    "topicId": "general-rules",
+    "title": "Road",
+    "content": "A road is a route intended or used for vehicular or other traffic. A driver must understand that a road environment includes the carriageway, lanes, shoulders, junctions, crossings, signs, markings, pedestrians, cyclists, roadside objects, and changing hazards.",
+    "keywords": [
+      "road",
+      "carriageway",
+      "lane",
+      "shoulder",
+      "verge",
+      "kerb",
+      "intersection",
+      "junction",
+      "median",
+      "island",
+      "crossing",
+      "roundabout",
+      "slip road",
+      "bridge",
+      "railway crossing"
+    ],
+    "aliases": [
+      "carriageway",
+      "roadway",
+      "thoroughfare"
+    ],
+    "concepts": [
+      "roadcraft"
+    ]
+  },
+  {
+    "id": "KB-003",
+    "topicId": "general-rules",
+    "title": "Left-hand traffic",
+    "content": "Zimbabwe drives on the left-hand side of the road. This affects normal lane positioning, the side used for overtaking, roundabout circulation, turning behaviour, and the interpretation of traffic approaching from different directions.",
+    "keywords": [
+      "left-hand",
+      "drive on left",
+      "left side",
+      "keep left",
+      "driving side"
+    ],
+    "aliases": [
+      "left side of road",
+      "driving on the left"
+    ],
+    "concepts": [
+      "roadcraft",
+      "other"
+    ]
+  },
+  {
+    "id": "KB-005",
+    "topicId": "general-rules",
+    "title": "Priority versus permission",
+    "content": "Priority means which road user is entitled or expected to proceed before another under the applicable rule. Permission means that a movement is not prohibited, but it is still only safe when conditions allow it. A driver must never interpret 'I have priority' as 'I may drive regardless of danger.'",
+    "keywords": [
+      "priority",
+      "permission",
+      "right of way",
+      "entitled",
+      "proceed",
+      "give way"
+    ],
+    "aliases": [
+      "right of way",
+      "precedence",
+      "who goes first"
+    ],
+    "concepts": [
+      "junction"
+    ]
+  },
+  {
+    "id": "KB-008",
+    "topicId": "road-signs",
+    "title": "Purpose of road signs",
+    "content": "Road signs communicate control, warning, guidance, information, restrictions, or instructions to road users. A strong learner should identify sign type, shape, colour scheme, symbol or wording, whether the sign warns, commands, prohibits, guides, or informs, and what action should follow.",
+    "keywords": [
+      "road sign",
+      "signs",
+      "sign type",
+      "sign shape",
+      "sign colour",
+      "sign meaning"
+    ],
+    "aliases": [
+      "traffic sign",
+      "road board",
+      "sign board"
+    ],
+    "concepts": [
+      "sign-meaning",
+      "sign-recognition"
+    ]
+  },
+  {
+    "id": "KB-009",
+    "topicId": "road-signs",
+    "title": "Regulatory signs",
+    "content": "Regulatory signs impose or communicate traffic controls and restrictions. Examples include stop, give way, speed restriction, no entry, no overtaking, no U-turn, no parking, no stopping, prohibited turns, compulsory movements. Regulatory = 'this is the rule you must obey.'",
+    "keywords": [
+      "regulatory sign",
+      "regulatory",
+      "control",
+      "restriction",
+      "prohibition",
+      "compulsory"
+    ],
+    "aliases": [
+      "restrictive sign",
+      "control sign"
+    ],
+    "concepts": [
+      "sign-meaning",
+      "sign-action"
+    ]
+  },
+  {
+    "id": "KB-010",
+    "topicId": "road-signs",
+    "title": "Warning signs",
+    "content": "Warning signs alert drivers to hazards, road conditions or unusual circumstances ahead. Typical subjects: bends, junctions, pedestrian activity, children or schools, animals, road narrowing, steep gradients, slippery surfaces, railway crossings, traffic signals. Warning = 'pay attention to what is ahead and prepare.'",
+    "keywords": [
+      "warning sign",
+      "warning",
+      "hazard ahead",
+      "alert",
+      "caution"
+    ],
+    "aliases": [
+      "hazard sign",
+      "warning board",
+      "triangle sign"
+    ],
+    "concepts": [
+      "sign-meaning",
+      "sign-recognition"
+    ]
+  },
+  {
+    "id": "KB-012",
+    "topicId": "road-signs",
+    "title": "Mandatory signs",
+    "content": "Mandatory signs tell road users that a particular action or direction is required. Examples: proceed in a specified direction, keep to a specified side, use a particular route, compulsory turning or movement. 'Mandatory tells you what you must do. Prohibitory tells you what you must not do.'",
+    "keywords": [
+      "mandatory",
+      "mandatory sign",
+      "must do",
+      "compulsory",
+      "required action"
+    ],
+    "aliases": [
+      "compulsory sign",
+      "must sign"
+    ],
+    "concepts": [
+      "sign-meaning",
+      "sign-action"
+    ]
+  },
+  {
+    "id": "KB-013",
+    "topicId": "road-signs",
+    "title": "Prohibitory signs",
+    "content": "Prohibitory signs prohibit a movement, action, vehicle category, or use. Common examples: no entry, no overtaking, no U-turn, no right turn, speed restriction, no parking, no stopping. Learners often confuse 'no parking' with 'no stopping' — teach them as different restrictions.",
+    "keywords": [
+      "prohibitory",
+      "no entry",
+      "no overtaking",
+      "no u-turn",
+      "no parking",
+      "no stopping",
+      "prohibited"
+    ],
+    "aliases": [
+      "restriction sign",
+      "no sign"
+    ],
+    "concepts": [
+      "sign-meaning",
+      "sign-action"
+    ]
+  },
+  {
+    "id": "KB-014",
+    "topicId": "road-signs",
+    "title": "Stop sign",
+    "content": "A stop sign requires a driver to stop at the appropriate stop line or stopping point and comply with the applicable give-way rule before proceeding. Stopping is an action, not merely slowing down. A rolling stop is not the same thing as a complete stop.",
+    "keywords": [
+      "stop sign",
+      "stop",
+      "stop line",
+      "complete stop",
+      "rolling stop"
+    ],
+    "aliases": [
+      "red octagon",
+      "stop control"
+    ],
+    "concepts": [
+      "sign-meaning",
+      "sign-action"
+    ]
+  },
+  {
+    "id": "KB-015",
+    "topicId": "road-signs",
+    "title": "Give-way sign",
+    "content": "A give-way sign tells the approaching driver that priority belongs to traffic with precedence under the applicable junction arrangement. The driver should approach in a manner that allows the vehicle to stop and should yield when required.",
+    "keywords": [
+      "give way",
+      "give-way",
+      "yield",
+      "yield sign",
+      "give way sign"
+    ],
+    "aliases": [
+      "yield control",
+      "give way control"
+    ],
+    "concepts": [
+      "sign-meaning",
+      "sign-action"
+    ]
+  },
+  {
+    "id": "KB-016",
+    "topicId": "road-signs",
+    "title": "Speed restriction sign",
+    "content": "A speed restriction sign establishes a maximum permitted speed for the controlled road section. A maximum speed is not a target speed. The safe speed can be lower because of rain, pedestrians, congestion, poor visibility, road surface, animals, vehicle condition, load, bends, hills, temporary hazards.",
+    "keywords": [
+      "speed sign",
+      "speed restriction",
+      "maximum speed",
+      "speed limit sign"
+    ],
+    "aliases": [
+      "speed limit sign",
+      "restriction sign"
+    ],
+    "concepts": [
+      "sign-meaning",
+      "speed-limit"
+    ]
+  },
+  {
+    "id": "KB-018",
+    "topicId": "road-signs",
+    "title": "Sign plates and supplementary information",
+    "content": "A supplementary plate can qualify the main sign by giving distance, direction, time, vehicle class, exception, length of restriction, conditions. Teach learners to read the complete sign combination, not only the main symbol.",
+    "keywords": [
+      "supplementary plate",
+      "additional plate",
+      "sign plate",
+      "distance plate",
+      "time plate"
+    ],
+    "aliases": [
+      "extra plate",
+      "sign information"
+    ],
+    "concepts": [
+      "sign-meaning"
+    ]
+  },
+  {
+    "id": "KB-020",
+    "topicId": "road-markings",
+    "title": "Centre lines",
+    "content": "Centre lines separate opposing traffic streams. Their appearance, continuity and colour communicate different rules under the applicable sign and marking system. A driver should never cross a line simply because the road appears empty.",
+    "keywords": [
+      "centre line",
+      "center line",
+      "centre-line",
+      "opposing traffic"
+    ],
+    "aliases": [
+      "center line",
+      "middle line"
+    ],
+    "concepts": [
+      "road-markings",
+      "lines"
+    ]
+  },
+  {
+    "id": "KB-022",
+    "topicId": "road-markings",
+    "title": "Continuous and double continuous lines",
+    "content": "Continuous lines indicate stronger restriction on crossing than broken lines. Double continuous markings communicate a strong restriction and must be interpreted according to the applicable road-marking rule. Do not teach that every solid line means the same thing in every location.",
+    "keywords": [
+      "solid line",
+      "continuous line",
+      "double solid",
+      "double continuous",
+      "solid yellow",
+      "solid white"
+    ],
+    "aliases": [
+      "unbroken line",
+      "full line"
+    ],
+    "concepts": [
+      "road-markings",
+      "lines"
+    ]
+  },
+  {
+    "id": "KB-023",
+    "topicId": "road-markings",
+    "title": "Lane arrows",
+    "content": "Lane arrows tell drivers where traffic in a lane is intended or required to proceed. A driver should choose the correct lane early, signal where appropriate, follow the arrow, avoid last-second cutting across lanes. Lane arrows are especially important before signalised junctions, roundabouts, lane splits, turn-only lanes.",
+    "keywords": [
+      "lane arrow",
+      "directional arrow",
+      "lane direction",
+      "turn arrow",
+      "arrow marking"
+    ],
+    "aliases": [
+      "arrow marking",
+      "lane indicator"
+    ],
+    "concepts": [
+      "road-markings",
+      "lines"
+    ]
+  },
+  {
+    "id": "KB-024",
+    "topicId": "road-markings",
+    "title": "Stop line",
+    "content": "A stop line identifies where a vehicle should stop when required by the associated control. At a traffic signal or stop sign, stopping after the line can place the vehicle in the conflict area and obstruct pedestrians or cross traffic.",
+    "keywords": [
+      "stop line",
+      "stop marking",
+      "where to stop"
+    ],
+    "aliases": [
+      "stop marking",
+      "halt line"
+    ],
+    "concepts": [
+      "road-markings"
+    ]
+  },
+  {
+    "id": "KB-026",
+    "topicId": "road-markings",
+    "title": "Pedestrian crossing markings",
+    "content": "Crossing markings indicate an area used by pedestrians to cross the carriageway. Drivers should reduce speed when approaching, observe pedestrians, stop when required, avoid overtaking or positioning that hides pedestrians.",
+    "keywords": [
+      "pedestrian crossing",
+      "crossing marking",
+      "zebra crossing",
+      "crosswalk"
+    ],
+    "aliases": [
+      "crosswalk marking",
+      "pedestrian line"
+    ],
+    "concepts": [
+      "road-markings",
+      "pedestrian"
+    ]
+  },
+  {
+    "id": "KB-028",
+    "topicId": "traffic-lights",
+    "title": "Traffic light basics",
+    "content": "Traffic signals allocate movement through a controlled conflict point. General meaning: red = stop, green = movement permitted when the route is clear and no other restriction prevents proceeding, amber = transition toward stopping. The AI should never teach green as 'you can drive no matter what.'",
+    "keywords": [
+      "traffic light",
+      "red light",
+      "green light",
+      "amber",
+      "signal",
+      "robot",
+      "robots"
+    ],
+    "aliases": [
+      "traffic signal",
+      "robot",
+      "stop light"
+    ],
+    "concepts": [
+      "robot",
+      "lights"
+    ]
+  },
+  {
+    "id": "KB-029",
+    "topicId": "traffic-lights",
+    "title": "Amber light reasoning",
+    "content": "Amber is not a signal to accelerate through the junction. The driver should normally prepare to stop and stop where required if this can be done safely. 'Never create a greater hazard simply to beat a light.'",
+    "keywords": [
+      "amber",
+      "amber light",
+      "yellow light",
+      "amber signal",
+      "flashing amber"
+    ],
+    "aliases": [
+      "yellow light",
+      "amber signal"
+    ],
+    "concepts": [
+      "robot",
+      "lights"
+    ]
+  },
+  {
+    "id": "KB-030",
+    "topicId": "traffic-lights",
+    "title": "Arrows and lane-control signals",
+    "content": "Directional arrows can control particular movements separately from the main signal. A driver must read the active signal, arrow direction, lane markings, turn prohibition, pedestrian movement.",
+    "keywords": [
+      "arrow signal",
+      "directional arrow",
+      "arrow light",
+      "green arrow",
+      "red arrow"
+    ],
+    "aliases": [
+      "arrow light",
+      "turn signal light"
+    ],
+    "concepts": [
+      "robot",
+      "lights"
+    ]
+  },
+  {
+    "id": "KB-032",
+    "topicId": "traffic-lights",
+    "title": "Police or traffic officer control",
+    "content": "A person lawfully directing traffic may give instructions that drivers must follow according to the applicable law. When a police officer or authorised traffic controller is physically controlling movement, the driver must not ignore that direction simply because a signal shows something different.",
+    "keywords": [
+      "police officer",
+      "traffic officer",
+      "traffic controller",
+      "directing traffic"
+    ],
+    "aliases": [
+      "traffic cop",
+      "road police"
+    ],
+    "concepts": [
+      "robot"
+    ]
+  },
+  {
+    "id": "KB-034",
+    "topicId": "junction-rules",
+    "title": "Priority hierarchy",
+    "content": "At a junction, the driver should first identify the controls that determine movement: 1) authorised traffic control, 2) traffic signals, 3) regulatory signs and markings, 4) road layout and applicable right-of-way rules, 5) safe driving judgement.",
+    "keywords": [
+      "priority hierarchy",
+      "junction priority",
+      "who goes first",
+      "order of priority"
+    ],
+    "aliases": [
+      "priority order",
+      "precedence hierarchy"
+    ],
+    "concepts": [
+      "junction"
+    ]
+  },
+  {
+    "id": "KB-035",
+    "topicId": "junction-rules",
+    "title": "Right of way",
+    "content": "Right of way answers the question: 'Who should proceed first under the applicable rule?' The driver must assess signs, lines, lights, road shape, lane direction, pedestrians, cyclists, vehicles already committed to the junction.",
+    "keywords": [
+      "right of way",
+      "who goes first",
+      "proceed first",
+      "priority",
+      "precedence"
+    ],
+    "aliases": [
+      "who has priority",
+      "who moves first",
+      "give way"
+    ],
+    "concepts": [
+      "junction"
+    ]
+  },
+  {
+    "id": "KB-036",
+    "topicId": "junction-rules",
+    "title": "Uncontrolled junctions",
+    "content": "At an uncontrolled junction, no traffic light or explicit priority sign controls the conflict. A commonly taught Zimbabwe convention is that traffic approaching from the right is given precedence at an uncontrolled intersection. This should be treated as a Zimbabwe road-rule teaching point.",
+    "keywords": [
+      "uncontrolled junction",
+      "no sign",
+      "no signal",
+      "approaching from the right"
+    ],
+    "aliases": [
+      "uncontrolled intersection",
+      "no-control junction"
+    ],
+    "concepts": [
+      "junction"
+    ]
+  },
+  {
+    "id": "KB-041",
+    "topicId": "junction-rules",
+    "title": "Roundabouts",
+    "content": "At a roundabout, drivers must understand approach lane selection, direction of circulation, traffic already circulating, signals, lane arrows, exit selection, position before exiting, blind spots. A simple 'give way to the right' slogan is insufficient.",
+    "keywords": [
+      "roundabout",
+      "traffic circle",
+      "rotary",
+      "circulating",
+      "exit roundabout",
+      "entering roundabout"
+    ],
+    "aliases": [
+      "traffic circle",
+      "rotary"
+    ],
+    "concepts": [
+      "junction"
+    ]
+  },
+  {
+    "id": "KB-042",
+    "topicId": "junction-rules",
+    "title": "Merging",
+    "content": "Merging is the process of joining another traffic stream. A safe merge requires speed matching, adequate gap, mirror checks, blind-spot checks, signal, smooth movement, no forcing of another road user.",
+    "keywords": [
+      "merge",
+      "merging",
+      "join",
+      "joining",
+      "joining the road",
+      "slip road"
+    ],
+    "aliases": [
+      "joining traffic",
+      "entering road"
+    ],
+    "concepts": [
+      "junction"
+    ]
+  },
+  {
+    "id": "KB-049",
+    "topicId": "speed-limits",
+    "title": "Maximum speed versus safe speed",
+    "content": "A posted maximum speed is a legal ceiling, not an instruction to drive at that speed in all conditions. Safe speed depends on visibility, surface, road geometry, traffic, pedestrians, weather, vehicle/load, expected hazards.",
+    "keywords": [
+      "speed limit",
+      "maximum speed",
+      "safe speed",
+      "appropriate speed",
+      "legal speed"
+    ],
+    "aliases": [
+      "posted speed",
+      "legal limit"
+    ],
+    "concepts": [
+      "speed-limit"
+    ]
+  },
+  {
+    "id": "KB-052",
+    "topicId": "speed-limits",
+    "title": "Speed on bends",
+    "content": "Braking heavily during a bend can upset vehicle balance. Better roadcraft: reduce speed before the bend, select the appropriate gear, enter with a usable safety margin, maintain smooth steering, accelerate progressively when the road opens.",
+    "keywords": [
+      "bend",
+      "curve",
+      "corner",
+      "speed on bend",
+      "braking in bend"
+    ],
+    "aliases": [
+      "cornering speed",
+      "bend speed"
+    ],
+    "concepts": [
+      "speed-limit",
+      "roadcraft"
+    ]
+  },
+  {
+    "id": "KB-053",
+    "topicId": "speed-limits",
+    "title": "Speed downhill",
+    "content": "Descending steep roads can cause speed to build quickly. Use appropriate gear, controlled braking, safe speed, increased following distance. Avoid relying continuously on the foot brake on a long descent because braking components can overheat.",
+    "keywords": [
+      "downhill",
+      "steep descent",
+      "gradient",
+      "hill",
+      "engine braking"
+    ],
+    "aliases": [
+      "descending",
+      "going downhill"
+    ],
+    "concepts": [
+      "speed-limit",
+      "roadcraft"
+    ]
+  },
+  {
+    "id": "KB-055",
+    "topicId": "overtaking",
+    "title": "Overtaking checklist",
+    "content": "Before overtaking, ask: 1) Is overtaking legal here? 2) Is there sufficient visibility? 3) Is the road clear far enough ahead? 4) Is there enough acceleration/performance? 5) Is the gap still available? 6) Have mirrors and blind spots been checked? 7) Has the intention been signalled? 8) Can I return to my lane without forcing another vehicle to brake? If any answer is no, wait.",
+    "keywords": [
+      "overtaking checklist",
+      "before overtaking",
+      "overtaking rules",
+      "can i overtake"
+    ],
+    "aliases": [
+      "passing checklist",
+      "overtake safely"
+    ],
+    "concepts": [
+      "overtaking"
+    ]
+  },
+  {
+    "id": "KB-057",
+    "topicId": "overtaking",
+    "title": "Places where overtaking is dangerous",
+    "content": "Avoid overtaking where the road environment prevents adequate visibility or recovery space, including blind bends, crests, narrow bridges, restricted junction approaches, pedestrian conflict areas, railway crossings, areas with solid restriction markings, any location prohibited by sign or law.",
+    "keywords": [
+      "blind bend",
+      "crest",
+      "narrow bridge",
+      "junction approach",
+      "pedestrian area",
+      "railway crossing",
+      "solid line"
+    ],
+    "aliases": [
+      "dangerous overtake locations",
+      "no overtaking zones"
+    ],
+    "concepts": [
+      "overtaking"
+    ]
+  },
+  {
+    "id": "KB-061",
+    "topicId": "parking",
+    "title": "Stopping versus parking",
+    "content": "Stopping is a temporary halt. Parking generally means leaving a vehicle stationary for a longer period or for a purpose covered by the applicable parking rule. The legal distinction can depend on the regulation and sign.",
+    "keywords": [
+      "stopping",
+      "parking",
+      "temporary halt",
+      "leaving vehicle"
+    ],
+    "aliases": [
+      "park vs stop",
+      "parking vs stopping"
+    ],
+    "concepts": [
+      "parking-rule"
+    ]
+  },
+  {
+    "id": "KB-063",
+    "topicId": "parking",
+    "title": "Unsafe parking locations",
+    "content": "Do not park where doing so blocks traffic, obstructs visibility, blocks a crossing, blocks a driveway or entrance, creates danger at a junction, hides a sign, obstructs emergency access, violates a local sign or restriction.",
+    "keywords": [
+      "unsafe parking",
+      "where not to park",
+      "parking restrictions",
+      "no parking zone"
+    ],
+    "aliases": [
+      "parking danger zones",
+      "illegal parking"
+    ],
+    "concepts": [
+      "parking-rule"
+    ]
+  },
+  {
+    "id": "KB-067",
+    "topicId": "pedestrian-safety",
+    "title": "Vulnerable road users",
+    "content": "Vulnerable road users have less physical protection. These include pedestrians, cyclists, motorcyclists, children, elderly people, people with disabilities, roadside workers. Drivers must anticipate their presence and leave appropriate space.",
+    "keywords": [
+      "vulnerable",
+      "pedestrian",
+      "cyclist",
+      "motorcyclist",
+      "child",
+      "elderly",
+      "disabled"
+    ],
+    "aliases": [
+      "vulnerable users",
+      "road users at risk"
+    ],
+    "concepts": [
+      "pedestrian",
+      "cycles",
+      "motorcycle"
+    ]
+  },
+  {
+    "id": "KB-068",
+    "topicId": "pedestrian-safety",
+    "title": "Pedestrian crossings",
+    "content": "Approach crossings at a speed that allows safe response. Watch for pedestrians waiting, pedestrians already crossing, children, cyclists, vehicles stopped near the crossing. Never overtake a vehicle that has stopped at a crossing.",
+    "keywords": [
+      "crossing",
+      "pedestrian crossing",
+      "zebra",
+      "crossing approaching",
+      "stopped at crossing"
+    ],
+    "aliases": [
+      "pedestrian crossing",
+      "crosswalk"
+    ],
+    "concepts": [
+      "pedestrian"
+    ]
+  },
+  {
+    "id": "KB-070",
+    "topicId": "pedestrian-safety",
+    "title": "Cyclists",
+    "content": "When passing cyclists: allow generous lateral clearance, avoid passing at unsafe speed, check for oncoming traffic, expect wobbling or sudden movement, do not squeeze them toward kerbs or obstacles.",
+    "keywords": [
+      "cyclist",
+      "bicycle",
+      "bike",
+      "passing cyclist",
+      "lateral clearance"
+    ],
+    "aliases": [
+      "passing cyclists",
+      "cyclist safety"
+    ],
+    "concepts": [
+      "cycles"
+    ]
+  },
+  {
+    "id": "KB-082",
+    "topicId": "vehicle-equipment",
+    "title": "Tyres",
+    "content": "Tyres are the only normal contact between vehicle and road. Inspect inflation, tread, visible damage, uneven wear, bulges, cuts. Underinflation can affect handling, braking and fuel consumption. Worn or damaged tyres reduce grip.",
+    "keywords": [
+      "tyre",
+      "tyres",
+      "tire",
+      "tread",
+      "inflation",
+      "puncture",
+      "bulge",
+      "underinflation"
+    ],
+    "aliases": [
+      "tire",
+      "tyre condition"
+    ],
+    "concepts": [
+      "tyres"
+    ]
+  },
+  {
+    "id": "KB-083",
+    "topicId": "vehicle-equipment",
+    "title": "Brakes",
+    "content": "A healthy braking system should give predictable stopping performance. Warning signs: soft/spongy pedal, unusual noise, pulling, vibration, warning light, increased stopping distance. The correct instructional response is to have the fault checked.",
+    "keywords": [
+      "brake",
+      "brakes",
+      "braking",
+      "spongy pedal",
+      "brake noise",
+      "brake warning"
+    ],
+    "aliases": [
+      "brake system",
+      "braking system"
+    ],
+    "concepts": [
+      "braking"
+    ]
+  },
+  {
+    "id": "KB-086",
+    "topicId": "vehicle-equipment",
+    "title": "Lights",
+    "content": "Lights serve two functions: help the driver see, and help others see the vehicle. Know the purpose of headlamps, dipped/low beam, main/high beam, brake lights, indicators, hazard warning lights, fog lamps, rear lights, number-plate illumination.",
+    "keywords": [
+      "lights",
+      "headlight",
+      "headlamp",
+      "dipped beam",
+      "high beam",
+      "brake light",
+      "fog lamp",
+      "hazard lights"
+    ],
+    "aliases": [
+      "headlamps",
+      "vehicle lights"
+    ],
+    "concepts": [
+      "lights"
+    ]
+  },
+  {
+    "id": "KB-099",
+    "topicId": "night-driving",
+    "title": "Rain",
+    "content": "Rain can reduce visibility, increase stopping distance, reduce tyre grip, obscure road markings, create standing water. Response: slow down, increase following distance, use appropriate lights, use wipers, avoid abrupt control inputs.",
+    "keywords": [
+      "rain",
+      "wet",
+      "heavy rain",
+      "standing water",
+      "rainy",
+      "wet road"
+    ],
+    "aliases": [
+      "raining",
+      "wet conditions"
+    ],
+    "concepts": [
+      "distance"
+    ]
+  },
+  {
+    "id": "KB-100",
+    "topicId": "night-driving",
+    "title": "Aquaplaning",
+    "content": "Aquaplaning/hydroplaning occurs when water reduces tyre contact with the road. Risk increases with standing water, higher speed, worn tyres. If it occurs: remain calm, avoid abrupt braking, ease off the accelerator, hold a steady course, allow the tyres to regain contact.",
+    "keywords": [
+      "aquaplaning",
+      "hydroplaning",
+      "skid on water",
+      "water between tyres",
+      "tyre loses contact"
+    ],
+    "aliases": [
+      "hydroplaning",
+      "water skimming"
+    ],
+    "concepts": [
+      "distance",
+      "roadcraft"
+    ]
+  },
+  {
+    "id": "KB-103",
+    "topicId": "night-driving",
+    "title": "Night driving",
+    "content": "Night driving reduces detection time and changes how hazards are perceived. Good practice: reduce speed as visibility falls, keep windscreen and lights clean, use high beam only where appropriate and without dazzling others, dip lights when required, expect pedestrians, cyclists and animals to be harder to see.",
+    "keywords": [
+      "night",
+      "night driving",
+      "dark",
+      "darkness",
+      "headlights",
+      "high beam",
+      "dipped beam",
+      "dazzle"
+    ],
+    "aliases": [
+      "driving at night",
+      "dark conditions"
+    ],
+    "concepts": [
+      "lights"
+    ]
+  },
+  {
+    "id": "KB-105",
+    "topicId": "night-driving",
+    "title": "Skid causes",
+    "content": "Skids occur when available tyre grip is exceeded. Causes can include excessive speed, sudden steering, harsh braking, acceleration on low-grip surfaces, poor tyres, water, loose gravel, oil or mud.",
+    "keywords": [
+      "skid",
+      "skidding",
+      "sliding",
+      "loss of grip",
+      "loss of traction",
+      "low grip"
+    ],
+    "aliases": [
+      "skidding",
+      "slippery"
+    ],
+    "concepts": [
+      "roadcraft"
+    ]
+  },
+  {
+    "id": "KB-107",
+    "topicId": "night-driving",
+    "title": "Responding to a skid",
+    "content": "The correct recovery action depends on whether the vehicle is understeering, oversteering, braking-locking, or otherwise losing grip. General principle: stay calm, avoid panic inputs, look where you want to travel, make smooth control inputs, regain tyre grip.",
+    "keywords": [
+      "skid recovery",
+      "responding to skid",
+      "understeer",
+      "oversteer",
+      "correct skid"
+    ],
+    "aliases": [
+      "skid response",
+      "skid control"
+    ],
+    "concepts": [
+      "roadcraft"
+    ]
+  },
+  {
+    "id": "KB-118",
+    "topicId": "accident-procedures",
+    "title": "First priority after a crash",
+    "content": "After an accident: 1) protect life, 2) prevent further collision where possible, 3) call appropriate emergency services, 4) assist injured people within your training, 5) exchange/report required information under the applicable law. Do not create another collision while trying to help.",
+    "keywords": [
+      "accident",
+      "crash",
+      "collision",
+      "after accident",
+      "emergency",
+      "first priority"
+    ],
+    "aliases": [
+      "crash procedure",
+      "accident response"
+    ],
+    "concepts": [
+      "accident"
+    ]
+  },
+  {
+    "id": "KB-123",
+    "topicId": "alcohol-drugs",
+    "title": "Alcohol",
+    "content": "Alcohol impairs judgement, reaction, attention, coordination, risk assessment. The safest driving principle is not to drive after drinking. For legal threshold questions, use the current Zimbabwe law.",
+    "keywords": [
+      "alcohol",
+      "drink driving",
+      "drunk",
+      "intoxication",
+      "blood alcohol",
+      "under the influence"
+    ],
+    "aliases": [
+      "drinking and driving",
+      "DUI",
+      "DWI"
+    ],
+    "concepts": [
+      "alcohol"
+    ]
+  },
+  {
+    "id": "KB-125",
+    "topicId": "alcohol-drugs",
+    "title": "Fatigue",
+    "content": "Fatigue reduces attention, reaction time, decision quality, lane control. Warning signs: yawning, heavy eyelids, wandering lane position, missing signs, poor memory of recent kilometres. Correct response: stop safely and rest.",
+    "keywords": [
+      "fatigue",
+      "tired",
+      "sleepy",
+      "drowsy",
+      "exhausted",
+      "yawning"
+    ],
+    "aliases": [
+      "tired driving",
+      "sleepiness"
+    ],
+    "concepts": [
+      "other"
+    ]
+  },
+  {
+    "id": "KB-145",
+    "topicId": "vehicle-classes",
+    "title": "Learner licence age",
+    "content": "Zimbabwe's 2023 Road Traffic (Licensing of Drivers) Regulations provide that a person under 16 may not be issued a learner's licence. The full licensing framework contains different requirements for different vehicle classes.",
+    "keywords": [
+      "learner licence",
+      "age",
+      "minimum age",
+      "16",
+      "licence age",
+      "how old"
+    ],
+    "aliases": [
+      "licence age",
+      "driving age"
+    ],
+    "concepts": [
+      "licence-requirement"
+    ]
+  },
+  {
+    "id": "KB-148",
+    "topicId": "vehicle-classes",
+    "title": "VID role",
+    "content": "The Vehicle Inspectorate Department is responsible for functions that include vehicle inspection and testing for learner's licences and Certificates of Competency.",
+    "keywords": [
+      "VID",
+      "vehicle inspectorate",
+      "certificate of competency",
+      "testing"
+    ],
+    "aliases": [
+      "vehicle inspectorate department"
+    ],
+    "concepts": [
+      "licence-requirement"
+    ]
+  }
+]

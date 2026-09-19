@@ -18,6 +18,7 @@ import {
   getLiveAIStatus,
 } from "../ai-provider";
 import type { ConversationMessage, AIAvailability } from "@zivvvo/ai-gateway";
+import Markdown from "../Markdown";
 
 const STARTER_PROMPTS = [
   "What should I study?",
@@ -242,7 +243,11 @@ export default function AiTutorPage() {
             <p className={`text-xs font-semibold mb-0.5 ${msg.role === "user" ? "text-ink-dim" : "text-primary"}`}>
               {msg.role === "user" ? "You" : "AI Tutor"}
             </p>
-            <p className="text-ink leading-relaxed">{msg.text}</p>
+            {msg.role === "user" ? (
+              <p className="text-ink leading-relaxed">{msg.text}</p>
+            ) : (
+              <Markdown content={msg.text} className="text-ink" />
+            )}
           </div>
         ))}
         {loading && (

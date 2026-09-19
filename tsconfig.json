@@ -24,7 +24,8 @@
       "@zivvvo/content": ["packages/content/src/index.ts"],
       "@zivvvo/learning-engine": ["packages/learning-engine/src/index.ts"],
       "@zivvvo/assessment-engine": ["packages/assessment-engine/src/index.ts"],
-      "@zivvvo/ai-gateway": ["packages/ai-gateway/src/index.ts"]
+      "@zivvvo/ai-gateway": ["packages/ai-gateway/src/index.ts"],
+      "@zivvvo/ai-tutor-language": ["packages/ai-tutor-language/src/index.ts"]
     }
   },
   "include": ["apps/web/src", "packages/*/src"],

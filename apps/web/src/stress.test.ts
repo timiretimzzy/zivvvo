@@ -17,6 +17,7 @@ import {
   gradeQuestion,
   mockScore,
 } from "@zivvvo/assessment-engine";
+import { getFamilyId } from "@zivvvo/content";
 import {
   DAY_MS,
   applyAnswer,
@@ -247,7 +248,9 @@ function runJourney(seed: number, days: number, opts: { mockEvery: number }): Jo
         const n = sanitySession(rev, learnerId, (q) => attempt(q, rev!.session, ts));
         if (n > 0) {
           j.sessionsRun++;
-          for (const qid of bad) expect(rev!.session.questions.some((q) => q.qid === qid)).toBe(true);
+          // Family dedup: each bad qid's family should be represented (not necessarily the exact qid)
+          const sessionFamilies = new Set(rev!.session.questions.map((q) => getFamilyId(q.qid)));
+          for (const qid of bad) expect(sessionFamilies.has(getFamilyId(qid))).toBe(true);
         }
       }
     }

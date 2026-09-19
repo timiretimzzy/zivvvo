@@ -12,6 +12,7 @@ import { useApp } from "../store";
 import { conceptSession } from "../engine";
 import { Card, Button, Tag } from "../ui";
 import { play, vibrate } from "../sound";
+import Markdown from "../Markdown";
 import type { ConceptSummary } from "./context";
 
 interface ConceptTeachCardProps {
@@ -114,7 +115,9 @@ export default function ConceptTeachCard({
             {expanded ? "Hide explanation" : "Read the full explanation"}
           </button>
           {expanded && (
-            <p className="mt-2 text-sm text-ink-dim leading-relaxed">{explanation}</p>
+            <div className="mt-2 text-sm text-ink-dim leading-relaxed">
+              <Markdown content={explanation} />
+            </div>
           )}
         </div>
       )}

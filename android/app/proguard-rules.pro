@@ -1,0 +1,3 @@
+-keep class co.zw.zivvvo.** { *; }
+-keep class androidx.browser.trusted.** { *; }
+-keep class com.google.androidbrowserhelper.** { *; }

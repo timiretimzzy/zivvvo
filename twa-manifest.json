@@ -1,0 +1,20 @@
+{
+  "包": "co.zw.zivvvo",
+  "name": "Zivvvo",
+  "shortName": "Zivvvo",
+  "themeColor": "#111827",
+  "backgroundColor": "#0f172a",
+  "startUrl": "/",
+  "scope": "/",
+  "appVersionCode": 1,
+  "appVersionName": "1.0.0",
+  "signingKey": {
+    "path": "release-key.jks",
+    "alias": "zivvvo",
+    "password": "Zivvvo2026!"
+  },
+  "iconPath": "apps/web/public/icons/icon-512.png",
+  "maskableIconPath": "apps/web/public/icons/icon-512.png",
+  "isSigningEnabled": true,
+  "isMinificationEnabled": true
+}

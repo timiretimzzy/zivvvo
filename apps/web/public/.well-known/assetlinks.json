@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "co.zw.zivvvo",
+      "sha256_cert_fingerprints": ["95:64:66:0D:73:23:D8:EE:3A:85:C0:C4:2A:3B:D3:BB:7C:53:C6:76:5F:7A:F5:BF:44:66:B7:52:5F:26:34:B0"]
+    }
+  }
+]

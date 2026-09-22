@@ -68,7 +68,26 @@ function circleIcon(x, y, size) {
 }
 
 mkdirSync(OUT_DIR, { recursive: true });
-for (const size of [192, 512]) {
+for (const size of [48, 72, 96, 144, 192, 384, 512]) {
   writeFileSync(join(OUT_DIR, `icon-${size}.png`), png(size, circleIcon));
   console.log(`make-icons: wrote icon-${size}.png`);
 }
+
+// Adaptive icon layers (512x512)
+// Foreground: ring on transparent background
+function foregroundIcon(x, y, size) {
+  const cx = size / 2;
+  const cy = size / 2;
+  const d = Math.hypot(x - cx, y - cy) / size;
+  const ringMid = 0.4;
+  const ringHalf = 0.055;
+  if (Math.abs(d - ringMid) <= ringHalf) return RING;
+  return [0, 0, 0, 0]; // transparent
+}
+writeFileSync(join(OUT_DIR, "icon-foreground.png"), png(512, foregroundIcon));
+console.log("make-icons: wrote icon-foreground.png (adaptive foreground)");
+
+// Background: solid dark colour
+function bgIcon() { return BG; }
+writeFileSync(join(OUT_DIR, "icon-background.png"), png(512, bgIcon));
+console.log("make-icons: wrote icon-background.png (adaptive background)");

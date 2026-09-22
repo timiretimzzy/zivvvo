@@ -1,5 +1,6 @@
 # secrets — never commit
 data/primaed/.creds.txt
+CREDENTIALS.md
 # raw scrape / build-time source — keep out of the public repo
 /data/
 /research/

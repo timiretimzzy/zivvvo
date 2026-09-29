@@ -130,7 +130,7 @@ export const useApp = create<AppStore>((set, get) => ({
 
     // If a different user signed in, clear the old user's data from IndexedDB
     if (userSwitched) {
-      console.log("[Zivvvo] User switch detected, clearing old data");
+      console.warn("[Zivvvo] User switch detected, clearing old data");
       await db.learners.clear();
       // Re-check after await
       if (get().currentSupabaseUserId && supabaseUserId && get().currentSupabaseUserId !== supabaseUserId) return;

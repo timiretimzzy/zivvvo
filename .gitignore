@@ -14,6 +14,7 @@ supabase/.temp/
 node_modules/
 dist/
 build/
+vercel.json
 *.tsbuildinfo
 *.tgz
 

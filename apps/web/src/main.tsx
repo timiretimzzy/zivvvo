@@ -24,3 +24,7 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
     void navigator.serviceWorker.register("/sw.js");
   });
 }
+
+window.addEventListener("unhandledrejection", (event) => {
+  console.error("[Zivvvo] Unhandled rejection:", event.reason);
+});

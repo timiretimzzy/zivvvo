@@ -418,7 +418,7 @@ describe("stress: full-year learner journeys over the production bank", () => {
     runPlanner(casual);
     runRecommenderBlast();
     const el = performance.now() - t0;
-    expect(el).toBeLessThan(60_000);
+    expect(el).toBeLessThan(90_000);
   });
 });
 

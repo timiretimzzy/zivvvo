@@ -2,7 +2,7 @@ import type { AttemptRow, SyncBackend } from "./sync";
 import { SyncManager, rowToAttempt } from "./sync";
 import type { AttemptEvent } from "@zivvvo/assessment-engine";
 import { db, type StoredLearner } from "./db";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { ReviewState } from "@zivvvo/learning-engine";
 import type { EngagementState } from "@zivvvo/learning-engine";
 
@@ -19,7 +19,7 @@ async function getClient(): Promise<SupabaseClient | null> {
     clientPromise = Promise.resolve(null);
     return null;
   }
-  clientPromise = import("@supabase/supabase-js").then(({ createClient }) =>
+  clientPromise = Promise.resolve(
     createClient(url, key, {
       db: { schema: "zivvvo" },
       auth: { persistSession: true, autoRefreshToken: true },

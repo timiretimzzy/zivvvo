@@ -7,7 +7,7 @@ CREDENTIALS.md
 .env
 .env.*
 !.env.example
-!.env.production
+
 supabase/.temp/
 
 # node / build

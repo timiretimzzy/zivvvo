@@ -230,7 +230,7 @@ export default function AiTutorPage() {
         </div>
       )}
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-2 mb-3 min-h-0">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-2 mb-3 min-h-0" aria-live="polite" aria-label="Chat messages">
         {chatHistory.length === 0 && isLive && (
           <div className="rounded-xl bg-primary/5 p-3">
             <p className="text-sm text-ink leading-relaxed">

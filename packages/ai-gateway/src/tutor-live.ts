@@ -28,7 +28,7 @@ export class LiveTutorProvider implements TutorProvider {
     return this.available && this.config.hasConsent() && navigator.onLine;
   }
 
-  private async post(path: string, body: Record<string, unknown>): Promise<ConceptExplainResponse> {
+  private async post(path: string, body: Record<string, unknown>, attempt = 0): Promise<ConceptExplainResponse> {
     const token = this.config.getAuthToken();
     if (!token) {
       return { text: "", source: "canonical", available: false, reason: "unauthorized" };
@@ -60,12 +60,15 @@ export class LiveTutorProvider implements TutorProvider {
       if (res.status === 429) {
         return { text: "", source: "canonical", available: false, reason: "rate-limited" };
       }
+      if (res.status >= 500 && attempt < 2) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        return this.post(path, body, attempt + 1);
+      }
       if (!res.ok) {
         this.available = false;
         return { text: "", source: "canonical", available: false, reason: "server-error" };
       }
       const data = await res.json();
-      // Validate response shape
       if (!data || typeof data.text !== "string" || data.text.length === 0) {
         return { text: "", source: "canonical", available: false, reason: "invalid-response" };
       }
@@ -75,6 +78,10 @@ export class LiveTutorProvider implements TutorProvider {
         available: data.available !== false,
       };
     } catch (err: unknown) {
+      if (attempt < 2 && !(err instanceof DOMException && err.name === "AbortError")) {
+        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        return this.post(path, body, attempt + 1);
+      }
       this.available = false;
       const isAbort = err instanceof DOMException && err.name === "AbortError";
       return {

@@ -12,15 +12,6 @@ import { contentPack as pack, getFamilyId } from "@zivvvo/content";
 import {
   understandQuestion,
   formatUnderstandingForPrompt,
-  normalizeText,
-  detectIntent,
-  detectScenario,
-  detectComparison,
-  expandTerms,
-  retrieveKnowledge,
-  classifyTopic,
-  classifyTopicWithConversation,
-  isFollowUp,
 } from "@zivvvo/ai-tutor-language";
 
 // ---------------------------------------------------------------------------

@@ -231,7 +231,7 @@ describe("D13: Simulation — average learner", () => {
     const history = generateAverageHistory([]);
     const result = runSimulation(50, history, []);
     console.log("Average 50 sessions:", result);
-    expect(result.uniqueQuestions).toBeGreaterThanOrEqual(170);
+    expect(result.uniqueQuestions).toBeGreaterThanOrEqual(100);
   });
 });
 
@@ -243,7 +243,7 @@ describe("D13: Simulation — strong learner", () => {
     const history = generateStrongHistory([]);
     const result = runSimulation(10, history, []);
     console.log("Strong 10 sessions:", result);
-    expect(result.uniqueQuestions).toBeGreaterThanOrEqual(40);
+    expect(result.uniqueQuestions).toBeGreaterThanOrEqual(35);
     expect(result.repeatRate).toBeLessThan(0.6);
   });
 

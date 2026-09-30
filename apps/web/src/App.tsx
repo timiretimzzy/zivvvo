@@ -202,7 +202,7 @@ function LoginScreen() {
         <footer className="border-t border-line pt-4 text-xs text-ink-dim">
           <a href="/privacy.html" className="underline hover:text-ink">Privacy Policy</a>
           {" · "}
-          <a href="https://github.com/timiretimzzy/zivvvo" className="underline hover:text-ink" target="_blank" rel="noopener noreferrer">GitHub</a>
+          <a href="/tos.html" className="underline hover:text-ink">Terms of Service</a>
         </footer>
       </div>
     </div>

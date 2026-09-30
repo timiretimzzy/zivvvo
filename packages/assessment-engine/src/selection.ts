@@ -378,22 +378,45 @@ export function scoreCandidate(
   // --- Recency Penalty ---
   if (exposure && exposure.totalAttempts > 0) {
     const daysSinceSeen = (now - exposure.lastSeenAt) / (24 * 60 * 60 * 1000);
-    // Strong penalty for very recent, decays over time
     factors.recencyPenalty = Math.exp(-config.recencyDecayRate * daysSinceSeen);
     if (daysSinceSeen < 1) {
-      factors.recencyPenalty *= 1.5; // Extra penalty for same-day
+      factors.recencyPenalty *= 1.5;
       reasons.push("seen-today");
     } else if (daysSinceSeen < 3) {
       factors.recencyPenalty *= 1.2;
       reasons.push("seen-recently");
     }
 
-    // Override: if it's due for review or a serious weakness, reduce penalty
     if (factors.review > 0.5) {
       factors.recencyPenalty *= 0.3;
     }
     if (mastery !== undefined && mastery < 0.4) {
       factors.recencyPenalty *= 0.5;
+    }
+  }
+
+  // --- Cross-Session Diversity Penalty ---
+  if (state.recentSessionQids.has(qid)) {
+    factors.recencyPenalty = Math.max(factors.recencyPenalty, 0.6);
+    reasons.push("recent-session");
+  }
+
+  // --- Concept Overlap Penalty ---
+  if (concept && state.recentSessionQids.size > 0) {
+    let recentConceptOverlap = 0;
+    for (const recentQid of state.recentSessionQids) {
+      const recentQuestion = state.exposureMap.get(recentQid);
+      if (recentQuestion) {
+        const recentConcept = state.conceptExposure.get(concept);
+        if (recentConcept && recentConcept.totalAttempts > 0) {
+          recentConceptOverlap++;
+        }
+      }
+    }
+    if (recentConceptOverlap > 0) {
+      const overlapPenalty = Math.min(0.25, recentConceptOverlap * 0.05);
+      factors.recencyPenalty = Math.max(factors.recencyPenalty, overlapPenalty);
+      reasons.push("concept-overlap");
     }
   }
 
@@ -449,6 +472,10 @@ export interface SelectionState {
   conceptExposure: Map<string, ConceptExposure>;
   learnerLevel: "novice" | "developing" | "strong";
   rng: () => number;
+  /** Question IDs from the last N sessions — used for cross-session diversity. */
+  recentSessionQids: Set<string>;
+  /** Maximum number of recent sessions to remember. */
+  recentSessionMemory: number;
 }
 
 /**
@@ -628,6 +655,20 @@ export function buildSelectionState(
     topicExpected.set(t, (topicWeights.get(t) ?? 1) / totalWeight);
   }
 
+  // Build cross-session memory: question IDs from the last N sessions
+  const recentSessionQids = new Set<string>();
+  const sessionIds = new Set<string>();
+  for (const a of attempts) {
+    if (a.sessionId) sessionIds.add(a.sessionId);
+  }
+  const sortedSessionIds = [...sessionIds].sort().reverse();
+  const recentSessionIds = new Set(sortedSessionIds.slice(0, 3));
+  for (const a of attempts) {
+    if (a.sessionId && recentSessionIds.has(a.sessionId)) {
+      recentSessionQids.add(a.qid);
+    }
+  }
+
   return {
     now,
     selected: [],
@@ -645,6 +686,8 @@ export function buildSelectionState(
     conceptExposure: conceptExposureMap,
     learnerLevel: classifyLearnerLevel(topicMastery),
     rng,
+    recentSessionQids,
+    recentSessionMemory: 3,
   };
 }
 
